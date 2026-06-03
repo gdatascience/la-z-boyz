@@ -787,7 +787,6 @@ project_fantasy_points <- function(projections, scoring_weights = NULL) {
     } else {
       # Pitchers: starters ~ 1-2 starts/week, relievers ~ 4-5 apps/week
       games_per_week <- games / 23
-      games_per_week <- max(games_per_week, 0.5)  # floor for safety
     }
 
     # pts_per_week = (total_season_points / games) * games_per_week
@@ -886,7 +885,7 @@ build_pitching_stat_line <- function(row) {
   )
 
   # HLD, QS, CG, NH, PG are not in the Marcel counting stats but needed for scoring
-  # Estimate from context when possible
+  # Estimate from context, SCALED to the player's projected workload
   gs_proxy <- stat_line$W + stat_line$L
   if (gs_proxy > 5) {
     # Likely a starter
@@ -896,12 +895,15 @@ build_pitching_stat_line <- function(row) {
     stat_line$CG <- gs_proxy * 0.02
     stat_line$HLD <- 0
   } else {
-    # Likely a reliever
+    # Likely a reliever — scale holds by projected appearances
     stat_line$QS <- 0
     stat_line$CG <- 0
-    # HLD: estimate from save opportunities context
-    # A middle reliever might average ~15 holds per season
-    stat_line$HLD <- if (stat_line$SV < 5) 12 else 0
+    # Estimate projected appearances from IP (relievers avg ~1 IP per appearance)
+    proj_appearances <- max(ip / 1.0, 0)
+    # A middle reliever earns holds at ~0.20 per appearance (~15 HLD / 75 G)
+    # Closers (high SV) get fewer holds
+    holds_per_appearance <- if (stat_line$SV < 5) 0.20 else 0.0
+    stat_line$HLD <- proj_appearances * holds_per_appearance
   }
 
   # NH and PG are too rare to project meaningfully

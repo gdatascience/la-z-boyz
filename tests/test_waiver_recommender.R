@@ -1,6 +1,7 @@
 # tests/test_waiver_recommender.R
 # Unit tests for waiver_recommender.R
 
+source("R/utils/player_linker.R")
 source("R/analysis/waiver_recommender.R")
 
 cat("=== Waiver Recommender Tests ===\n\n")

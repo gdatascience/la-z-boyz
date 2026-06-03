@@ -8,6 +8,7 @@
 # Source dependencies (when run standalone)
 # source("R/utils/salary_rules.R")
 # source("R/utils/keeper_value.R")
+# source("R/utils/player_linker.R")
 # source("R/analysis/player_valuation.R")
 # source("R/analysis/trade_analyzer.R")
 
@@ -147,12 +148,36 @@ recommend_faab <- function(my_team, valuations, rosters, remaining_faab, weeks_r
   my_salary_total <- sum(my_roster$salary, na.rm = TRUE)
 
   # --- Identify free agents (not on any roster) ---
-  rostered_players <- tolower(rosters$player_name)
+  # Use fuzzy matching via player_linker to robustly identify rostered players
+  # across name discrepancies (accents, suffixes, nicknames like Louie/Louis,
+  # Mike/Michael, Zachary/Zach). A simple tolower() match misses these.
   all_valued_players <- valuations
 
-  free_agents <- all_valued_players[
-    !tolower(all_valued_players$player_name) %in% rostered_players, , drop = FALSE
-  ]
+  # Step 1: exact match via normalize_name (fast, catches accents/suffixes)
+  rostered_players_norm <- vapply(rosters$player_name, normalize_name, character(1),
+                                   USE.NAMES = FALSE)
+  valued_players_norm <- vapply(valuations$player_name, normalize_name, character(1),
+                                 USE.NAMES = FALSE)
+  is_rostered <- valued_players_norm %in% rostered_players_norm
+
+  # Step 2: for remaining unmatched, use fuzzy matching (catches nicknames)
+  unmatched_idx <- which(!is_rostered)
+  if (length(unmatched_idx) > 0) {
+    # Only fuzzy-match against roster names not yet claimed by exact match
+    unmatched_val_names <- valuations$player_name[unmatched_idx]
+    fuzzy_results <- fuzzy_match_players(
+      name_a = unmatched_val_names,
+      name_b = rosters$player_name
+    )
+    # Mark as rostered if confidence >= 0.7
+    for (i in seq_len(nrow(fuzzy_results))) {
+      if (!is.na(fuzzy_results$idx_b[i]) && fuzzy_results$confidence[i] >= 0.7) {
+        is_rostered[unmatched_idx[i]] <- TRUE
+      }
+    }
+  }
+
+  free_agents <- all_valued_players[!is_rostered, , drop = FALSE]
 
   if (nrow(free_agents) == 0) {
     log_info_waiver("No free agents found in valuations data")

@@ -49,3 +49,4 @@ la-z-boyz/
 - **Error handling**: Graceful degradation — missing data files produce warnings and `NULL` returns rather than hard stops.
 - **Naming**: Functions use `snake_case`. Files use `snake_case.R`. Test files prefix with `test-property-` (testthat) or `test_` (standalone).
 - **No package structure**: Modules are loaded via `source()` with `here::here()` for path resolution. No namespace, no DESCRIPTION.
+- **Player name matching**: CBS roster names and Baseball Reference stat names often differ (accents, nicknames like Louie/Louis, suffixes). Always use `normalize_name()` or `fuzzy_match_players()` from `player_linker.R` when comparing player names across data sources — never raw `tolower()` equality.

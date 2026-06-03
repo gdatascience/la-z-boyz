@@ -58,6 +58,7 @@ Present the trade evaluation with:
 ## Key Files
 
 - #[[file:R/analysis/trade_analyzer.R]]
+- #[[file:R/utils/player_linker.R]]
 - #[[file:R/utils/keeper_value.R]]
 - #[[file:R/utils/salary_rules.R]]
 

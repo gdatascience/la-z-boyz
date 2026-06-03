@@ -585,3 +585,335 @@ match_player_info <- function(player_name, player_info) {
 
   NULL
 }
+
+
+# --- Statcast Quality Adjustments ---
+
+#' Confidence interval width multipliers by data quality
+#' "full" (3+ seasons) → ±15%, "limited" (2 seasons) → ±25%, "rookie" (1 season) → ±40%
+CI_WIDTH_BY_QUALITY <- list(
+  full    = 0.15,
+  limited = 0.25,
+
+  rookie  = 0.40
+)
+
+#' Apply Statcast batted-ball quality adjustment to batting projections
+#'
+#' When Statcast metrics are available for a player, adjusts the projected
+#' fantasy points based on quality-of-contact indicators. This captures
+#' players whose traditional stats under/overperform their underlying quality.
+#'
+#' Metrics used:
+#' - exit_velocity: average exit velocity (league avg ~88.5 mph)
+#' - launch_angle: average launch angle (optimal ~12-15 degrees for power)
+#' - barrel_rate: % of batted balls that are barrels (league avg ~6.5%)
+#' - xBA: expected batting average based on batted ball profile
+#' - xSLG: expected slugging based on batted ball profile
+#'
+#' The adjustment is multiplicative: if Statcast metrics suggest the player
+#' is outperforming expectations, apply a downward correction and vice versa.
+#' Capped at ±10% to avoid over-weighting Statcast data.
+#'
+#' @param proj_pts Numeric: baseline projected points per week
+#' @param statcast_data Named list or 1-row data.frame with Statcast metrics.
+#'   Expected optional fields: exit_velocity, barrel_rate, xBA, xSLG, BA, SLG
+#' @return Numeric: adjusted projected points per week
+#' @export
+apply_statcast_adjustment <- function(proj_pts, statcast_data) {
+  if (is.null(statcast_data) || length(statcast_data) == 0) {
+    return(proj_pts)
+  }
+
+  if (is.data.frame(statcast_data)) {
+    statcast_data <- as.list(statcast_data[1, , drop = FALSE])
+  }
+
+  adjustment <- 1.0
+  n_signals <- 0
+
+  # Signal 1: Exit velocity relative to league average (88.5 mph)
+  ev <- safe_numeric(statcast_data[["exit_velocity"]])
+  if (ev > 0) {
+    ev_league_avg <- 88.5
+    # Each mph above average adds ~1% to projection
+    ev_adj <- (ev - ev_league_avg) * 0.01
+    adjustment <- adjustment + ev_adj
+    n_signals <- n_signals + 1
+  }
+
+  # Signal 2: Barrel rate relative to league average (6.5%)
+  barrel <- safe_numeric(statcast_data[["barrel_rate"]])
+  if (barrel > 0) {
+    barrel_league_avg <- 6.5
+    # Each pct point of barrel above average adds ~1.5%
+    barrel_adj <- (barrel - barrel_league_avg) * 0.015
+    adjustment <- adjustment + barrel_adj
+    n_signals <- n_signals + 1
+  }
+
+  # Signal 3: xBA vs actual BA (under/overperformance)
+  xba <- safe_numeric(statcast_data[["xBA"]])
+  ba <- safe_numeric(statcast_data[["BA"]])
+  if (xba > 0 && ba > 0) {
+    # If xBA > BA, player is underperforming (positive adjustment)
+    ba_diff <- xba - ba
+    # Scale: each 0.010 xBA edge = ~1% boost
+    xba_adj <- ba_diff * 100 * 0.01
+    adjustment <- adjustment + xba_adj
+    n_signals <- n_signals + 1
+  }
+
+  # Signal 4: xSLG vs actual SLG
+  xslg <- safe_numeric(statcast_data[["xSLG"]])
+  slg <- safe_numeric(statcast_data[["SLG"]])
+  if (xslg > 0 && slg > 0) {
+    slg_diff <- xslg - slg
+    xslg_adj <- slg_diff * 100 * 0.005
+    adjustment <- adjustment + xslg_adj
+    n_signals <- n_signals + 1
+  }
+
+  # Average the adjustment signals to prevent stacking
+
+  if (n_signals > 1) {
+    # Blend: the total adjustment beyond 1.0 is averaged over signals
+    total_adj <- adjustment - 1.0
+    adjustment <- 1.0 + (total_adj / n_signals)
+  }
+
+  # Cap adjustment at ±10% to avoid over-weighting Statcast
+  adjustment <- max(0.90, min(1.10, adjustment))
+
+  proj_pts * adjustment
+}
+
+
+# --- Fantasy Points Conversion and Confidence Intervals ---
+
+#' Convert projected stats to projected H2H Points per week with confidence intervals
+#'
+#' Takes the output of generate_projections() and adds:
+#' - proj_pts_per_week: projected fantasy points per week
+#' - confidence_lo: lower bound of 80% confidence interval
+#' - confidence_hi: upper bound of 80% confidence interval
+#'
+#' Confidence interval width is based on data_quality:
+#' - "full" (3+ seasons): ±15%
+#' - "limited" (2 seasons): ±25%
+#' - "rookie" (1 season): ±40%
+#'
+#' When Statcast data columns are present in the projections data frame,
+#' the function incorporates quality-of-contact adjustments.
+#'
+#' @param projections Data frame of projected stats (output from generate_projections).
+#'   Must include columns: player_type, data_quality, and proj_* stat columns.
+#'   May optionally include Statcast columns: exit_velocity, barrel_rate, xBA, xSLG, BA, SLG.
+#' @param scoring_weights List with $batting and $pitching sub-lists of scoring weights.
+#'   If NULL, loads defaults from league_constitution.rds.
+#' @return The projections data frame augmented with:
+#'   - proj_pts_per_week (numeric)
+#'   - confidence_lo (numeric, non-negative)
+#'   - confidence_hi (numeric, non-negative)
+#' @export
+#' @examples
+#' \dontrun{
+#' projections <- generate_projections(batting_stats, hist_list, player_db)
+#' scored <- project_fantasy_points(projections, scoring_weights = NULL)
+#' }
+project_fantasy_points <- function(projections, scoring_weights = NULL) {
+  if (is.null(projections) || nrow(projections) == 0) {
+    log_warn("Empty projections data frame — returning unchanged")
+    return(projections)
+  }
+
+  # Load scoring weights if not provided
+  if (is.null(scoring_weights)) {
+    scoring_weights <- load_default_weights()
+  }
+
+  # Ensure scoring_weights has batting and pitching sub-lists
+  if (is.null(scoring_weights$batting) || is.null(scoring_weights$pitching)) {
+    stop("scoring_weights must have $batting and $pitching sub-lists", call. = FALSE)
+  }
+
+  # Statcast columns that may be present for quality adjustment
+  statcast_cols <- c("exit_velocity", "barrel_rate", "xBA", "xSLG", "BA", "SLG")
+
+  # Compute fantasy points for each player
+  n <- nrow(projections)
+  pts_per_week <- numeric(n)
+
+  for (i in seq_len(n)) {
+    row <- projections[i, , drop = FALSE]
+    ptype <- as.character(row$player_type)
+
+    if (ptype == "Batter") {
+      # Build stat line from proj_* columns using scoring weight keys
+      stat_line <- build_batting_stat_line(row)
+      raw_pts <- compute_batting_points(stat_line, scoring_weights$batting)
+
+      # Estimate games from projected PA (assume ~4 PA per game)
+      proj_pa <- safe_numeric(row[["projected_pa"]])
+      games <- if (proj_pa > 0) proj_pa / 4 else 162  # default full season
+    } else {
+      # Pitcher
+      stat_line <- build_pitching_stat_line(row)
+      raw_pts <- compute_pitching_points(stat_line, scoring_weights$pitching)
+
+      # Estimate games from projected BF or IP
+      proj_bf <- safe_numeric(row[["projected_bf"]])
+      proj_ip <- safe_numeric(row[["proj_IP"]])
+      if (proj_bf > 0) {
+        games <- proj_bf / 4.3 / 5.5  # BF per inning / IP per game
+        games <- max(games, 1)
+      } else if (proj_ip > 0) {
+        # Starters: ~6 IP per start => games = IP/6
+        # Relievers: ~1 IP per game => games = IP/1
+        gs_proxy <- safe_numeric(row[["proj_W"]]) + safe_numeric(row[["proj_L"]])
+        if (gs_proxy > 5) {
+          games <- proj_ip / 5.5
+        } else {
+          games <- proj_ip / 1.0
+        }
+      } else {
+        games <- 30  # default assumption
+      }
+    }
+
+    # Convert total points to per-week (23-week season, ~7 games per week for batters)
+    if (ptype == "Batter") {
+      games_per_week <- 6.5
+    } else {
+      # Pitchers: starters ~ 1-2 starts/week, relievers ~ 4-5 apps/week
+      games_per_week <- games / 23
+      games_per_week <- max(games_per_week, 0.5)  # floor for safety
+    }
+
+    # pts_per_week = (total_season_points / games) * games_per_week
+    if (games > 0) {
+      ppw <- (raw_pts / games) * games_per_week
+    } else {
+      ppw <- 0
+    }
+
+    # Apply Statcast adjustment if data available
+    has_statcast <- any(statcast_cols %in% names(row))
+    if (has_statcast && ptype == "Batter") {
+      sc_data <- row[, intersect(statcast_cols, names(row)), drop = FALSE]
+      # Only apply if at least one Statcast metric has a value
+      if (any(vapply(sc_data, function(x) safe_numeric(x) > 0, logical(1)))) {
+        ppw <- apply_statcast_adjustment(ppw, sc_data)
+      }
+    }
+
+    pts_per_week[i] <- ppw
+  }
+
+  # Add projected points per week
+  projections$proj_pts_per_week <- pts_per_week
+
+  # Generate confidence intervals based on data quality
+  # Default CI width lookup
+  ci_width <- vapply(projections$data_quality, function(dq) {
+    w <- CI_WIDTH_BY_QUALITY[[dq]]
+    if (is.null(w)) CI_WIDTH_BY_QUALITY[["limited"]]  # fallback
+    else w
+  }, numeric(1))
+
+  # Confidence bounds (80% CI)
+  projections$confidence_lo <- pmax(0, pts_per_week * (1 - ci_width))
+  projections$confidence_hi <- pmax(0, pts_per_week * (1 + ci_width))
+
+  log_info(sprintf("Added fantasy points: mean=%.1f pts/week, range=[%.1f, %.1f]",
+                   mean(pts_per_week, na.rm = TRUE),
+                   min(pts_per_week, na.rm = TRUE),
+                   max(pts_per_week, na.rm = TRUE)))
+
+  projections
+}
+
+
+# --- Stat Line Builders for Fantasy Points ---
+
+#' Build a batting stat line from projection row for scoring computation
+#'
+#' Maps proj_* columns back to the names expected by compute_batting_points.
+#'
+#' @param row 1-row data.frame from projections
+#' @return Named list suitable for compute_batting_points()
+#' @keywords internal
+build_batting_stat_line <- function(row) {
+  stat_line <- list(
+    X1B = safe_numeric(row[["proj_X1B"]]),
+    X2B = safe_numeric(row[["proj_X2B"]]),
+    X3B = safe_numeric(row[["proj_X3B"]]),
+    HR  = safe_numeric(row[["proj_HR"]]),
+    R   = safe_numeric(row[["proj_R"]]),
+    RBI = safe_numeric(row[["proj_RBI"]]),
+    BB  = safe_numeric(row[["proj_BB"]]),
+    HBP = safe_numeric(row[["proj_HBP"]]),
+    SB  = safe_numeric(row[["proj_SB"]]),
+    CS  = safe_numeric(row[["proj_CS"]]),
+    SO  = safe_numeric(row[["proj_SO"]])
+  )
+  # Grand slams and cycles are rare; estimate from HR count
+  # Approx 1 in 25 HR is a grand slam
+  stat_line$grand_slams <- stat_line$HR / 25
+  stat_line$cycle <- 0  # too rare to project
+
+  stat_line
+}
+
+#' Build a pitching stat line from projection row for scoring computation
+#'
+#' Maps proj_* columns back to the names expected by compute_pitching_points.
+#'
+#' @param row 1-row data.frame from projections
+#' @return Named list suitable for compute_pitching_points()
+#' @keywords internal
+build_pitching_stat_line <- function(row) {
+  ip <- safe_numeric(row[["proj_IP"]])
+  stat_line <- list(
+    IP  = ip,
+    SO  = safe_numeric(row[["proj_SO"]]),
+    W   = safe_numeric(row[["proj_W"]]),
+    L   = safe_numeric(row[["proj_L"]]),
+    SV  = safe_numeric(row[["proj_SV"]]),
+    H   = safe_numeric(row[["proj_H"]]),
+    ER  = safe_numeric(row[["proj_ER"]]),
+    BB  = safe_numeric(row[["proj_BB"]])
+  )
+
+  # HLD, QS, CG, NH, PG are not in the Marcel counting stats but needed for scoring
+  # Estimate from context when possible
+  gs_proxy <- stat_line$W + stat_line$L
+  if (gs_proxy > 5) {
+    # Likely a starter
+    # QS: approx 55% of starts for decent pitchers
+    stat_line$QS <- gs_proxy * 0.55
+    # CG: very rare in modern era (~2% of starts)
+    stat_line$CG <- gs_proxy * 0.02
+    stat_line$HLD <- 0
+  } else {
+    # Likely a reliever
+    stat_line$QS <- 0
+    stat_line$CG <- 0
+    # HLD: estimate from save opportunities context
+    # A middle reliever might average ~15 holds per season
+    stat_line$HLD <- if (stat_line$SV < 5) 12 else 0
+  }
+
+  # NH and PG are too rare to project meaningfully
+  stat_line$NH <- 0
+  stat_line$PG <- 0
+
+  # IBB: estimate ~5% of walks for starters, ~10% for relievers
+  if (gs_proxy > 5) {
+    stat_line$IBB <- stat_line$BB * 0.05
+  } else {
+    stat_line$IBB <- stat_line$BB * 0.10
+  }
+
+  stat_line
+}

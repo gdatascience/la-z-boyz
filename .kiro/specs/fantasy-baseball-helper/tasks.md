@@ -89,8 +89,8 @@ This plan builds the Fantasy Baseball Decision Helper from the ground up followi
 - [x] 4. Checkpoint — Utilities complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Build projection model
-  - [ ] 5.1 Implement R/analysis/projection_model.R — core projection engine
+- [x] 5. Build projection model
+  - [x] 5.1 Implement R/analysis/projection_model.R — core projection engine
     - Implement `marcel_project(seasons, weights, regression_pct)` with 5/4/3 weighting
     - Implement `apply_age_curve(projected_stats, age, position)` with peak at 27 (batters) / 28 (pitchers)
     - Implement `generate_projections(current_stats, historical, player_info)` for all MLB players
@@ -98,22 +98,22 @@ This plan builds the Fantasy Baseball Decision Helper from the ground up followi
     - Floor negative counting stats at zero
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.9_
 
-  - [ ] 5.2 Implement projection confidence intervals and fantasy points conversion
+  - [x] 5.2 Implement projection confidence intervals and fantasy points conversion
     - Implement `project_fantasy_points(projections, scoring_weights)` adding pts_per_week column
     - Generate confidence intervals (80% CI) based on data availability
     - Wider CI for players with fewer seasons of data
     - Incorporate Statcast batted-ball metrics when available
     - _Requirements: 4.5, 4.6, 4.7, 4.8_
 
-  - [ ] 5.3 Write property tests for projection model (Properties 6, 7, 8, 9)
+  - [x] 5.3 Write property tests for projection model (Properties 6, 7, 8, 9)
     - **Property 6: Projection Recency Weighting** — projection closer to recent season than oldest when difference > 20%
     - **Property 7: Age Curve Monotonicity** — age 35 produces lower stats than age 27 for same input
     - **Property 8: Confidence Interval Invariant** — lo ≤ projected ≤ hi, both non-negative
     - **Property 9: Confidence Width vs Data Availability** — 1 season data → wider CI than 3 seasons
     - **Validates: Requirements 4.2, 4.3, 4.4, 4.7**
 
-- [ ] 6. Build player valuation engine
-  - [ ] 6.1 Implement R/analysis/player_valuation.R
+- [x] 6. Build player valuation engine
+  - [x] 6.1 Implement R/analysis/player_valuation.R
     - Implement `compute_replacement_level(projections, roster_slots)` — (N×16 + 1)th player at each position
     - Implement `assign_dollar_values(projections, replacement_levels, total_salary_pool)` — distribute $4,160 proportional to PAR
     - Implement `adjust_positional_scarcity(values, roster_slots)` — premium for thin positions (C, SS)
@@ -121,17 +121,17 @@ This plan builds the Fantasy Baseball Decision Helper from the ground up followi
     - Exclude players with no projections from rankings
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8_
 
-  - [ ] 6.2 Write property tests for valuation (Properties 10, 11, 12)
+  - [x] 6.2 Write property tests for valuation (Properties 10, 11, 12)
     - **Property 10: Dollar Value Conservation** — sum of positive dollar values = $4,160 ± $1
     - **Property 11: Replacement Level Definition** — replacement = (N×16+1)th player at position
     - **Property 12: Positional Scarcity Premium** — scarcer position gets higher value for same PAR
     - **Validates: Requirements 5.2, 5.3, 5.4**
 
-- [ ] 7. Checkpoint — Projection and valuation complete
+- [x] 7. Checkpoint — Projection and valuation complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 8. Build trade analyzer
-  - [ ] 8.1 Implement R/analysis/trade_analyzer.R — core trade evaluation
+- [x] 8. Build trade analyzer
+  - [x] 8.1 Implement R/analysis/trade_analyzer.R — core trade evaluation
     - Implement `analyze_trade(give, receive, my_team, valuations, rosters, standings)`
     - Compute net surplus value difference between sides
     - Compute projected pts/week change (batting + pitching breakdown)
@@ -140,7 +140,7 @@ This plan builds the Fantasy Baseball Decision Helper from the ground up followi
     - Reject trade if player not found in roster data
     - _Requirements: 6.1, 6.2, 6.3, 6.6, 6.10_
 
-  - [ ] 8.2 Implement trade analyzer — keeper and positional analysis
+  - [x] 8.2 Implement trade analyzer — keeper and positional analysis
     - Compute keeper implications: salary escalation path, 3-year keeper value, keeper eligibility
     - Assess positional impact (slots unfilled, over-filled, or improved)
     - Minor league player assessment: draft pedigree, salary track, prospect profile
@@ -148,13 +148,13 @@ This plan builds the Fantasy Baseball Decision Helper from the ground up followi
     - Generate structured recommendation (accept/reject/counter) with justification
     - _Requirements: 6.4, 6.5, 6.7, 6.8, 6.9_
 
-  - [ ] 8.3 Write property tests for trade analyzer (Properties 14, 15)
+  - [x] 8.3 Write property tests for trade analyzer (Properties 14, 15)
     - **Property 14: Trade Arithmetic Correctness** — net surplus, points change, salary change computed correctly
     - **Property 15: Trade Lopsided Detection** — flag when |net_surplus| > 20% of total trade value
     - **Validates: Requirements 6.1, 6.2, 6.3, 6.9**
 
-- [ ] 9. Build waiver recommender
-  - [ ] 9.1 Implement R/analysis/waiver_recommender.R
+- [x] 9. Build waiver recommender
+  - [x] 9.1 Implement R/analysis/waiver_recommender.R
     - Implement `recommend_faab(my_team, valuations, rosters, remaining_faab, weeks_remaining)`
     - Rank free agents by surplus value, return top 10
     - Identify drop candidates (lowest surplus on roster)
@@ -166,15 +166,15 @@ This plan builds the Fantasy Baseball Decision Helper from the ground up followi
     - Return empty list if no beneficial moves, or if non-contender during playoffs
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8_
 
-  - [ ] 9.2 Write property tests for waiver recommender (Properties 16, 17, 18, 21)
+  - [x] 9.2 Write property tests for waiver recommender (Properties 16, 17, 18, 21)
     - **Property 16: Waiver Recommendations Sorted by Surplus** — targets descending, drops ascending
     - **Property 17: FAAB Bid Bounds and Monotonicity** — bid ≥ $1 and ≤ budget; higher surplus → higher bid
     - **Property 18: Recommendation Constraint Compliance** — position eligibility + salary cap + playoff lock
     - **Property 21: Minor League Promotion Threshold Flagging** — flag at AB≥110 or IP≥40
     - **Validates: Requirements 7.1, 7.2, 7.3, 7.4, 7.6, 7.8**
 
-- [ ] 10. Build roster optimizer
-  - [ ] 10.1 Implement R/analysis/roster_optimizer.R
+- [x] 10. Build roster optimizer
+  - [x] 10.1 Implement R/analysis/roster_optimizer.R
     - Implement `optimize_lineup(my_team, rosters, projections, injuries, matchup_context)`
     - Fill exactly 16 active slots (C, 1B, 2B, 3B, SS, 3×OF, U, 5×SP, 2×RP)
     - Assign each player to at most one slot; only eligible positions
@@ -185,54 +185,54 @@ This plan builds the Fantasy Baseball Decision Helper from the ground up followi
     - Notify if no eligible replacement available for a slot
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
 
-  - [ ] 10.2 Write property tests for roster optimizer (Properties 19, 20)
+  - [x] 10.2 Write property tests for roster optimizer (Properties 19, 20)
     - **Property 19: Lineup Validity** — exactly 16 slots, one player per slot, position-eligible, no injured
     - **Property 20: Two-Start Pitcher Preference** — prefer 2-start SP when quality within 80%
     - **Validates: Requirements 8.1, 8.2, 8.5**
 
-- [ ] 11. Checkpoint — Decision modules complete
+- [x] 11. Checkpoint — Decision modules complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 12. Build serialization and reporting layer
-  - [ ] 12.1 Implement serialization utilities and RDS/CSV export
+- [x] 12. Build serialization and reporting layer
+  - [x] 12.1 Implement serialization utilities and RDS/CSV export
     - Implement helper for saving RDS with metadata attributes (source, timestamp, league_id)
     - Implement CSV export with UTF-8 encoding and comma delimiters
     - Handle file system errors: log error, retain in-memory results
     - Handle corrupted RDS: warn user, suggest re-run ingest
     - _Requirements: 9.1, 9.3, 9.4_
 
-  - [ ] 12.2 Write property tests for serialization (Properties 1, 2)
+  - [x] 12.2 Write property tests for serialization (Properties 1, 2)
     - **Property 1: RDS Serialization Round-Trip** — saveRDS/readRDS produces identical object including attributes
     - **Property 2: CSV Export Round-Trip** — UTF-8 characters (accented names) preserved through write/read
     - **Validates: Requirements 1.5, 9.1, 9.3**
 
-  - [ ] 12.3 Create R Markdown reports
+  - [x] 12.3 Create R Markdown reports
     - Create R/reports/weekly_summary.Rmd — lineup, FAAB targets, trade opportunities, keeper watchlist
     - Create R/reports/trade_report.Rmd — trade analysis output with all dimensions
     - Create R/reports/valuation_report.Rmd — player valuations, rankings, surplus
     - All reports render to HTML with timestamp, analysis type, and recommendations
     - _Requirements: 9.2, 9.5_
 
-- [ ] 13. Wire everything together and set up test infrastructure
-  - [ ] 13.1 Set up {testthat} test infrastructure and fixtures
+- [x] 13. Wire everything together and set up test infrastructure
+  - [x] 13.1 Set up {testthat} test infrastructure and fixtures
     - Create tests/testthat.R test runner configuration
     - Create tests/testthat/ directory structure matching design
     - Create tests/fixtures/ with sample HTML files for parsing tests
     - Configure {quickcheck} for property-based tests (minimum 100 iterations)
     - _Requirements: all (testing infrastructure)_
 
-  - [ ] 13.2 Write property test for constitution validation (Property 3)
+  - [x] 13.2 Write property test for constitution validation (Property 3)
     - **Property 3: Constitution Validation Completeness**
     - Valid constitution → returns TRUE; missing any required field → returns FALSE with field name
     - **Validates: Requirements 2.10**
 
-  - [ ] 13.3 Wire analysis pipeline end-to-end
+  - [x] 13.3 Wire analysis pipeline end-to-end
     - Create a master pipeline script that runs ingest → project → value → decide in sequence
     - Ensure all modules consume/produce RDS files correctly
     - Verify inter-module data contracts (column names, types match expected schemas)
     - _Requirements: all (integration)_
 
-- [ ] 14. Final checkpoint — All modules integrated
+- [x] 14. Final checkpoint — All modules integrated
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

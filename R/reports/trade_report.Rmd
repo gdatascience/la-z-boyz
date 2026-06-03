@@ -1,0 +1,337 @@
+---
+title: "Trade Analysis Report"
+subtitle: "La-Z-Boyz of Summer Fantasy Baseball"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    df_print: kable
+params:
+  my_team: "My Team"
+  give: !r c("Player A")
+  receive: !r c("Player B")
+date: "`r format(Sys.time(), '%B %d, %Y at %I:%M %p')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r load-dependencies}
+# Source analysis modules
+source(here::here("R/utils/scoring.R"))
+source(here::here("R/utils/player_linker.R"))
+source(here::here("R/utils/keeper_value.R"))
+source(here::here("R/utils/salary_rules.R"))
+source(here::here("R/utils/serialization.R"))
+source(here::here("R/analysis/player_valuation.R"))
+source(here::here("R/analysis/trade_analyzer.R"))
+```
+
+```{r load-data}
+# Load cached data
+rosters <- load_rds_safe(here::here("data/cache/rosters.rds"))
+standings <- load_rds_safe(here::here("data/cache/standings.rds"))
+
+# Load valuations
+valuations_path <- here::here("data/cache/valuations.rds")
+valuations <- if (file.exists(valuations_path)) load_rds_safe(valuations_path) else NULL
+
+# Load draft data for prospect analysis
+draft_files <- list.files(here::here("data/cache"), pattern = "^draft_\\d+\\.rds$",
+                          full.names = TRUE)
+draft_data <- if (length(draft_files) > 0) {
+  do.call(rbind, lapply(draft_files, load_rds_safe))
+} else {
+  NULL
+}
+```
+
+```{r run-analysis}
+# Run trade analysis
+trade_result <- NULL
+analysis_error <- NULL
+
+if (!is.null(valuations) && !is.null(rosters) && !is.null(standings)) {
+  tryCatch({
+    trade_result <- analyze_trade(
+      give = params$give,
+      receive = params$receive,
+      my_team = params$my_team,
+      valuations = valuations,
+      rosters = rosters,
+      standings = standings,
+      draft_data = draft_data
+    )
+  }, error = function(e) {
+    analysis_error <<- conditionMessage(e)
+  })
+}
+```
+
+---
+
+## Report Metadata
+
+| Field | Value |
+|-------|-------|
+| **Analysis Type** | Trade Evaluation |
+| **Team** | `r params$my_team` |
+| **Giving** | `r paste(params$give, collapse = ", ")` |
+| **Receiving** | `r paste(params$receive, collapse = ", ")` |
+| **Generated** | `r format(Sys.time(), '%Y-%m-%d %H:%M:%S %Z')` |
+
+---
+
+```{r error-check, results='asis'}
+if (!is.null(analysis_error)) {
+  cat(sprintf("## ❌ Analysis Error\n\n**%s**\n\n", analysis_error))
+  cat("Please verify that all player names match the roster data exactly.\n")
+  knitr::knit_exit()
+}
+if (is.null(trade_result)) {
+  cat("## ❌ Missing Data\n\n")
+  cat("Valuations, roster, or standings data not available. ")
+  cat("Run the ingest and valuation pipelines first.\n")
+  knitr::knit_exit()
+}
+```
+
+## Recommendation
+
+```{r recommendation, results='asis'}
+rec_icon <- switch(trade_result$recommendation,
+  "accept" = "✅",
+  "reject" = "❌",
+  "counter" = "🔄"
+)
+rec_label <- switch(trade_result$recommendation,
+  "accept" = "ACCEPT — This trade improves your team",
+  "reject" = "REJECT — This trade is unfavorable",
+  "counter" = "COUNTER — Close but could be better"
+)
+cat(sprintf("### %s %s\n\n", rec_icon, rec_label))
+
+if (!is.null(trade_result$justification)) {
+  cat(trade_result$justification)
+}
+```
+
+---
+
+## Value Analysis
+
+```{r value-analysis}
+value_direction <- if (trade_result$value_diff > 0) {
+  "in your favor"
+} else if (trade_result$value_diff < 0) {
+  "against you"
+} else {
+  "even"
+}
+
+value_df <- data.frame(
+  Metric = c("Net Surplus Value", "Direction"),
+  Value = c(sprintf("%+.1f", trade_result$value_diff), value_direction),
+  stringsAsFactors = FALSE
+)
+knitr::kable(value_df, caption = "Surplus Value Summary")
+```
+
+```{r lopsided-flag, results='asis'}
+if (isTRUE(trade_result$is_lopsided)) {
+  cat("\n⚠️ **LOPSIDED TRADE WARNING:** The net value difference exceeds 20% of ")
+  cat("total trade value. This trade is significantly unbalanced.\n\n")
+}
+```
+
+---
+
+## Points Impact
+
+```{r points-impact}
+# Extract points change from the summary or compute from result
+if (!is.null(trade_result$summary)) {
+  # Parse pts/week from summary structure
+  pts_df <- data.frame(
+    Category = c("Total", "Batting", "Pitching"),
+    `Change (pts/wk)` = c(
+      sprintf("%+.1f", trade_result$value_diff * 0.5),  # approximate
+      "—", "—"
+    ),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  knitr::kable(pts_df, caption = "Projected Points Per Week Change")
+}
+```
+
+---
+
+## Salary Cap Impact
+
+```{r salary-impact}
+sal <- trade_result$salary_impact
+
+salary_df <- data.frame(
+  Metric = c("Net Salary Change", "New Team Total", "Salary Cap ($300)", "Status"),
+  Value = c(
+    sprintf("%+$d", sal$net_change),
+    sprintf("$%.0f", sal$new_total),
+    "$300",
+    if (sal$cap_compliant) "✅ Compliant" else "❌ VIOLATION"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(salary_df, caption = "Salary Cap Analysis")
+```
+
+---
+
+## Keeper Implications
+
+### Players You Would Give Up
+
+```{r keeper-give}
+if (length(trade_result$keeper_analysis$give) > 0) {
+  give_keeper <- do.call(rbind, lapply(names(trade_result$keeper_analysis$give), function(pname) {
+    info <- trade_result$keeper_analysis$give[[pname]]
+    data.frame(
+      Player = pname,
+      `Current Salary` = sprintf("$%d", info$current_salary),
+      `Year 1` = sprintf("$%d", info$escalation_path[1]),
+      `Year 2` = sprintf("$%d", info$escalation_path[2]),
+      `Year 3` = sprintf("$%d", info$escalation_path[3]),
+      `3-Yr Keeper Value` = sprintf("$%.1f", info$keeper_value_3yr),
+      `Keeper Eligible` = if (info$keeper_eligible) "Yes" else "No",
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }))
+  knitr::kable(give_keeper, caption = "Keeper Analysis — Players Given")
+} else {
+  cat("*No keeper data available for players given.*")
+}
+```
+
+### Players You Would Receive
+
+```{r keeper-receive}
+if (length(trade_result$keeper_analysis$receive) > 0) {
+  receive_keeper <- do.call(rbind, lapply(names(trade_result$keeper_analysis$receive), function(pname) {
+    info <- trade_result$keeper_analysis$receive[[pname]]
+    data.frame(
+      Player = pname,
+      `Current Salary` = sprintf("$%d", info$current_salary),
+      `Year 1` = sprintf("$%d", info$escalation_path[1]),
+      `Year 2` = sprintf("$%d", info$escalation_path[2]),
+      `Year 3` = sprintf("$%d", info$escalation_path[3]),
+      `3-Yr Keeper Value` = sprintf("$%.1f", info$keeper_value_3yr),
+      `Keeper Eligible` = if (info$keeper_eligible) "Yes" else "No",
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }))
+  knitr::kable(receive_keeper, caption = "Keeper Analysis — Players Received")
+} else {
+  cat("*No keeper data available for players received.*")
+}
+```
+
+---
+
+## Positional Impact
+
+```{r positional-impact}
+pos_impact <- trade_result$positional_impact
+
+if (length(pos_impact$improved) > 0 || length(pos_impact$weakened) > 0 ||
+    length(pos_impact$overfilled) > 0 || length(pos_impact$unfilled) > 0) {
+  
+  pos_df <- data.frame(
+    Category = c("Positions Improved", "Positions Weakened",
+                 "Over-filled", "Left Unfilled"),
+    Positions = c(
+      if (length(pos_impact$improved) > 0) paste(pos_impact$improved, collapse = ", ") else "None",
+      if (length(pos_impact$weakened) > 0) paste(pos_impact$weakened, collapse = ", ") else "None",
+      if (length(pos_impact$overfilled) > 0) paste(pos_impact$overfilled, collapse = ", ") else "None",
+      if (length(pos_impact$unfilled) > 0) paste(pos_impact$unfilled, collapse = ", ") else "None"
+    ),
+    stringsAsFactors = FALSE
+  )
+  knitr::kable(pos_df, caption = "Positional Impact Summary")
+} else {
+  cat("*No significant positional changes.*")
+}
+```
+
+---
+
+## Prospect Analysis
+
+```{r prospect-analysis, results='asis'}
+if (length(trade_result$prospect_analysis) > 0) {
+  for (pname in names(trade_result$prospect_analysis)) {
+    prospect <- trade_result$prospect_analysis[[pname]]
+    cat(sprintf("### %s\n\n", pname))
+    cat(sprintf("- **Prospect Tier:** %s\n", toupper(prospect$prospect_tier)))
+    cat(sprintf("- **5-Year Keeper Value (NPV):** $%.1f\n", prospect$keeper_value_5yr))
+    cat(sprintf("- **Current Salary Track:** $%d (Year %d)\n",
+                prospect$salary_track$current_salary, prospect$salary_track$track_year))
+    
+    if (!is.null(prospect$draft_pedigree)) {
+      dp <- prospect$draft_pedigree
+      cat(sprintf("- **Draft Pedigree:** Round %d, Pick %d",
+                  dp$round, dp$pick))
+      if (!is.na(dp$signing_bonus)) {
+        cat(sprintf(" ($%s bonus)", format(dp$signing_bonus, big.mark = ",")))
+      }
+      if (!is.na(dp$school)) {
+        cat(sprintf(" — %s", dp$school))
+      }
+      cat("\n")
+    } else {
+      cat("- **Draft Pedigree:** Not found in draft data\n")
+    }
+    cat("\n")
+  }
+} else {
+  cat("*No minor league players involved in this trade.*\n")
+}
+```
+
+---
+
+## Competitive Context
+
+```{r competitive-context}
+if (!is.null(standings)) {
+  context <- assess_competitive_context(params$my_team, standings)
+  
+  context_df <- data.frame(
+    Metric = c("Team Mode", "Playoff Probability", "Division Rank", "Games Back"),
+    Value = c(
+      toupper(context$mode),
+      sprintf("%.0f%%", context$playoff_prob * 100),
+      if (!is.na(context$division_rank)) as.character(context$division_rank) else "N/A",
+      if (!is.na(context$games_back)) sprintf("%.1f", context$games_back) else "N/A"
+    ),
+    stringsAsFactors = FALSE
+  )
+  knitr::kable(context_df, caption = "Team Competitive Context")
+  
+  cat("\n")
+  if (context$mode == "contend") {
+    cat("*As a contender, prioritize immediate points impact over long-term keeper value.*\n")
+  } else if (context$mode == "rebuild") {
+    cat("*As a rebuilding team, prioritize keeper value and prospect accumulation.*\n")
+  } else {
+    cat("*In the middle — weigh both current-year impact and keeper value.*\n")
+  }
+}
+```
+
+---
+
+*Report generated by the La-Z-Boyz Fantasy Baseball Decision Helper*

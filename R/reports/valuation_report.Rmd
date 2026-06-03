@@ -1,0 +1,304 @@
+---
+title: "Player Valuation Report"
+subtitle: "La-Z-Boyz of Summer Fantasy Baseball"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    df_print: kable
+params:
+  top_n: 50
+  position_filter: NULL
+date: "`r format(Sys.time(), '%B %d, %Y at %I:%M %p')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r load-dependencies}
+# Source analysis modules
+source(here::here("R/utils/scoring.R"))
+source(here::here("R/utils/keeper_value.R"))
+source(here::here("R/utils/salary_rules.R"))
+source(here::here("R/utils/serialization.R"))
+source(here::here("R/analysis/player_valuation.R"))
+```
+
+```{r load-data}
+# Load cached data
+valuations_path <- here::here("data/cache/valuations.rds")
+valuations <- if (file.exists(valuations_path)) load_rds_safe(valuations_path) else NULL
+
+rosters_path <- here::here("data/cache/rosters.rds")
+rosters <- if (file.exists(rosters_path)) load_rds_safe(rosters_path) else NULL
+
+projections_path <- here::here("data/cache/projections.rds")
+projections <- if (file.exists(projections_path)) load_rds_safe(projections_path) else NULL
+```
+
+---
+
+## Report Metadata
+
+| Field | Value |
+|-------|-------|
+| **Analysis Type** | Player Valuation & Rankings |
+| **Generated** | `r format(Sys.time(), '%Y-%m-%d %H:%M:%S %Z')` |
+| **Top N Players** | `r params$top_n` |
+| **Position Filter** | `r if (is.null(params$position_filter)) "All" else params$position_filter` |
+| **Salary Pool** | $4,160 (16 teams × $260) |
+
+---
+
+```{r data-check, results='asis'}
+if (is.null(valuations)) {
+  cat("## ❌ Valuations Not Available\n\n")
+  cat("Run the full valuation pipeline to generate player values:\n\n")
+  cat("```r\n")
+  cat("source('R/analysis/player_valuation.R')\n")
+  cat("valuations <- run_valuation_pipeline(projections)\n")
+  cat("save_rds_with_metadata(valuations, 'data/cache/valuations.rds', 'valuation_pipeline')\n")
+  cat("```\n")
+  knitr::knit_exit()
+}
+```
+
+## Overall Rankings
+
+```{r overall-rankings}
+# Apply position filter if specified
+display_vals <- valuations
+
+if (!is.null(params$position_filter)) {
+  display_vals <- display_vals[
+    toupper(display_vals$position) == toupper(params$position_filter), , drop = FALSE
+  ]
+}
+
+# Sort by dollar value descending and take top N
+display_vals <- display_vals[order(-display_vals$dollar_value), ]
+top_players <- head(display_vals, params$top_n)
+
+# Select display columns
+display_cols <- intersect(
+  c("player_name", "position", "proj_pts_per_week", "dollar_value",
+    "salary", "surplus_value", "positional_scarcity"),
+  names(top_players)
+)
+rankings_table <- top_players[, display_cols, drop = FALSE]
+
+# Format column names
+col_names <- c(
+  player_name = "Player",
+  position = "Pos",
+  proj_pts_per_week = "Pts/Wk",
+  dollar_value = "$ Value",
+  salary = "Salary",
+  surplus_value = "Surplus",
+  positional_scarcity = "Scarcity"
+)
+names(rankings_table) <- col_names[names(rankings_table)]
+
+# Round numeric columns
+if ("Pts/Wk" %in% names(rankings_table)) {
+  rankings_table$`Pts/Wk` <- round(rankings_table$`Pts/Wk`, 1)
+}
+if ("$ Value" %in% names(rankings_table)) {
+  rankings_table$`$ Value` <- round(rankings_table$`$ Value`, 1)
+}
+if ("Surplus" %in% names(rankings_table)) {
+  rankings_table$Surplus <- round(rankings_table$Surplus, 1)
+}
+if ("Scarcity" %in% names(rankings_table)) {
+  rankings_table$Scarcity <- round(rankings_table$Scarcity, 2)
+}
+
+knitr::kable(rankings_table, caption = sprintf("Top %d Players by Dollar Value", params$top_n),
+             row.names = FALSE)
+```
+
+---
+
+## Positional Rankings
+
+```{r positional-rankings, results='asis'}
+positions <- c("C", "1B", "2B", "3B", "SS", "OF", "SP", "RP")
+
+for (pos in positions) {
+  pos_players <- valuations[toupper(valuations$position) == pos, , drop = FALSE]
+  if (nrow(pos_players) == 0) next
+  
+  pos_players <- pos_players[order(-pos_players$dollar_value), ]
+  pos_top <- head(pos_players, 10)
+  
+  pos_display <- pos_top[, intersect(
+    c("player_name", "proj_pts_per_week", "dollar_value", "salary", "surplus_value"),
+    names(pos_top)
+  ), drop = FALSE]
+  
+  names(pos_display) <- c("Player", "Pts/Wk", "$ Value", "Salary", "Surplus")[
+    seq_len(ncol(pos_display))
+  ]
+  
+  # Round numerics
+  for (col in names(pos_display)) {
+    if (is.numeric(pos_display[[col]])) {
+      pos_display[[col]] <- round(pos_display[[col]], 1)
+    }
+  }
+  
+  cat(sprintf("\n### %s — Top 10\n\n", pos))
+  print(knitr::kable(pos_display, row.names = FALSE))
+  cat("\n")
+}
+```
+
+---
+
+## Surplus Value Leaders
+
+```{r surplus-leaders}
+if ("surplus_value" %in% names(valuations)) {
+  surplus_ranked <- valuations[!is.na(valuations$surplus_value), ]
+  surplus_ranked <- surplus_ranked[order(-surplus_ranked$surplus_value), ]
+  surplus_top <- head(surplus_ranked, 20)
+  
+  surplus_display <- surplus_top[, intersect(
+    c("player_name", "position", "dollar_value", "salary", "surplus_value"),
+    names(surplus_top)
+  ), drop = FALSE]
+  
+  names(surplus_display) <- c("Player", "Pos", "$ Value", "Salary", "Surplus")[
+    seq_len(ncol(surplus_display))
+  ]
+  
+  for (col in names(surplus_display)) {
+    if (is.numeric(surplus_display[[col]])) {
+      surplus_display[[col]] <- round(surplus_display[[col]], 1)
+    }
+  }
+  
+  knitr::kable(surplus_display, caption = "Top 20 Surplus Value Players (Best Bargains)",
+               row.names = FALSE)
+}
+```
+
+---
+
+## Keeper Value Rankings
+
+```{r keeper-rankings}
+if ("keeper_value_3yr" %in% names(valuations)) {
+  keeper_ranked <- valuations[!is.na(valuations$keeper_value_3yr), ]
+  keeper_ranked <- keeper_ranked[order(-keeper_ranked$keeper_value_3yr), ]
+  keeper_top <- head(keeper_ranked, 20)
+  
+  keeper_display <- keeper_top[, intersect(
+    c("player_name", "position", "salary", "dollar_value",
+      "keeper_value_3yr", "keeper_value_5yr", "is_minor_contract"),
+    names(keeper_top)
+  ), drop = FALSE]
+  
+  col_names_keeper <- c(
+    player_name = "Player",
+    position = "Pos",
+    salary = "Salary",
+    dollar_value = "$ Value",
+    keeper_value_3yr = "3-Yr Keeper",
+    keeper_value_5yr = "5-Yr Keeper",
+    is_minor_contract = "Minor?"
+  )
+  names(keeper_display) <- col_names_keeper[names(keeper_display)]
+  
+  for (col in names(keeper_display)) {
+    if (is.numeric(keeper_display[[col]])) {
+      keeper_display[[col]] <- round(keeper_display[[col]], 1)
+    }
+  }
+  
+  knitr::kable(keeper_display,
+               caption = "Top 20 Keeper Value Players (3-Year NPV Surplus)",
+               row.names = FALSE)
+}
+```
+
+---
+
+## Valuation Summary Statistics
+
+```{r summary-stats}
+summary_df <- data.frame(
+  Metric = c(
+    "Total Players Valued",
+    "Players Above Replacement",
+    "Mean Dollar Value",
+    "Median Dollar Value",
+    "Total Dollar Pool Distributed",
+    "Mean Surplus Value (rostered)",
+    "Players on Minor Contracts"
+  ),
+  Value = c(
+    nrow(valuations),
+    sum(valuations$dollar_value > 0, na.rm = TRUE),
+    sprintf("$%.1f", mean(valuations$dollar_value, na.rm = TRUE)),
+    sprintf("$%.1f", median(valuations$dollar_value, na.rm = TRUE)),
+    sprintf("$%s", format(round(sum(valuations$dollar_value[valuations$dollar_value > 0],
+                                     na.rm = TRUE)), big.mark = ",")),
+    if ("surplus_value" %in% names(valuations)) {
+      sprintf("$%.1f", mean(valuations$surplus_value, na.rm = TRUE))
+    } else { "N/A" },
+    if ("is_minor_contract" %in% names(valuations)) {
+      sum(valuations$is_minor_contract == TRUE, na.rm = TRUE)
+    } else { "N/A" }
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(summary_df, caption = "Valuation Engine Summary")
+```
+
+---
+
+## Recommendations
+
+```{r recommendations, results='asis'}
+cat("### Key Takeaways\n\n")
+
+# Identify most undervalued rostered players (highest surplus)
+if ("surplus_value" %in% names(valuations) && !is.null(rosters)) {
+  rostered_names <- tolower(rosters$player_name)
+  rostered_vals <- valuations[tolower(valuations$player_name) %in% rostered_names, ]
+  
+  if (nrow(rostered_vals) > 0) {
+    top_surplus <- rostered_vals[order(-rostered_vals$surplus_value), ]
+    top3 <- head(top_surplus, 3)
+    cat("**Best Value Players in the League:**\n\n")
+    for (i in seq_len(nrow(top3))) {
+      cat(sprintf("- %s (%s): $%.0f value on $%d salary = **$%.0f surplus**\n",
+                  top3$player_name[i], top3$position[i],
+                  top3$dollar_value[i], top3$salary[i], top3$surplus_value[i]))
+    }
+    cat("\n")
+  }
+}
+
+# Identify most overvalued (negative surplus)
+if ("surplus_value" %in% names(valuations) && !is.null(rosters)) {
+  if (nrow(rostered_vals) > 0) {
+    bottom_surplus <- rostered_vals[order(rostered_vals$surplus_value), ]
+    bottom3 <- head(bottom_surplus, 3)
+    cat("**Most Overpaid Players in the League:**\n\n")
+    for (i in seq_len(nrow(bottom3))) {
+      cat(sprintf("- %s (%s): $%.0f value on $%d salary = **$%.0f surplus**\n",
+                  bottom3$player_name[i], bottom3$position[i],
+                  bottom3$dollar_value[i], bottom3$salary[i], bottom3$surplus_value[i]))
+    }
+    cat("\n")
+  }
+}
+```
+
+---
+
+*Report generated by the La-Z-Boyz Fantasy Baseball Decision Helper*

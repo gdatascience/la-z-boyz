@@ -26,6 +26,11 @@
 - Property-based tests use manual randomization with `set.seed()` + 100+ iterations (no `quickcheck` dependency currently)
 - Test file naming: `test-property-*.R` (in `tests/testthat/`) and `test_*.R` (in `tests/`)
 
+## Git Workflow
+
+- This is a solo personal project — commit and push directly to `main`. No feature branches or PRs.
+- Write clear commit messages but don't overthink process.
+
 ## Common Commands
 
 ```sh

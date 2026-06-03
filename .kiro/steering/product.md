@@ -27,3 +27,4 @@ La-Z-Boyz of Summer is a fantasy baseball analytics tool for a 16-team CBS H2H P
 - Keeper rules: Standard contracts escalate +$4/year
 - Minor league system: Players at $0 are "Minor Leaguers" — they stay at $0 and don't count toward the active roster as long as they remain below promotion thresholds (130 AB or 50 IP). Once promoted (or threshold exceeded), they enter a rookie contract at $1* and escalate $1→$2→$3 before switching to the standard +$4/year track. Dropped minor leaguers lose their salary track.
 - Roster slots: C, 1B, 2B, 3B, SS, OF×3, U, SP×5, RP×2
+- Roster limits: 27 total max (22 active + 5 minor league). Active and minor league slots are independent caps — a team can't use an empty minor league slot for an active player or vice versa.

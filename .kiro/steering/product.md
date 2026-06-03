@@ -21,6 +21,8 @@ La-Z-Boyz of Summer is a fantasy baseball analytics tool for a 16-team CBS H2H P
 - Platform: CBS Sports Fantasy Baseball
 - Format: Head-to-Head Points (custom scoring weights defined in league constitution)
 - Teams: 16
-- Salary cap: $260 per team ($4,160 total pool)
+- Auction/draft cap: $260 per team
+- In-season salary cap: $300 per team
+- Keeper cap: $80 max kept salary per team
 - Keeper rules: Standard contracts escalate +$4/year; minor league contracts follow a $0→$1→$2→$3 track then +$4/year
 - Roster slots: C, 1B, 2B, 3B, SS, OF×3, U, SP×5, RP×2

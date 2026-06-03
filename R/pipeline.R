@@ -326,17 +326,59 @@ if (is.null(projections) || !("proj_pts_per_week" %in% names(projections))) {
 } else {
   # Merge salary data from rosters if available
   if (!is.null(rosters)) {
-    # Join salary info onto projections by player name
+    # Join salary info onto projections using fuzzy name matching
+    # (projections use BRef names which may have accents/suffixes that
+    #  differ from CBS roster names — e.g. "José Ramírez" vs "Jose Ramirez")
     roster_salary <- rosters[, c("player_name", "salary", "is_minor_contract"),
                              drop = FALSE]
     # Deduplicate (players might appear on multiple lines if multi-position)
     roster_salary <- roster_salary[!duplicated(roster_salary$player_name), ]
 
-    # Merge
+    # First try exact merge (handles the majority of matches quickly)
     projections_for_val <- merge(
       projections, roster_salary,
       by = "player_name", all.x = TRUE, suffixes = c("", ".roster")
     )
+
+    # For unmatched projections, attempt fuzzy matching via player_linker
+    unmatched_idx <- which(is.na(projections_for_val$salary))
+    if (length(unmatched_idx) > 0) {
+      unmatched_names <- projections_for_val$player_name[unmatched_idx]
+      unmatched_roster <- roster_salary$player_name[
+        !roster_salary$player_name %in% projections_for_val$player_name[!is.na(projections_for_val$salary)]
+      ]
+
+      if (length(unmatched_roster) > 0) {
+        fuzzy_results <- fuzzy_match_players(
+          name_a = unmatched_names,
+          name_b = unmatched_roster
+        )
+
+        # Apply matches that meet the confidence threshold
+        matched_count <- 0
+        for (i in seq_len(nrow(fuzzy_results))) {
+          if (!is.na(fuzzy_results$idx_b[i]) && fuzzy_results$confidence[i] >= 0.7) {
+            proj_row <- unmatched_idx[i]
+            roster_name <- unmatched_roster[fuzzy_results$idx_b[i]]
+            roster_row <- which(roster_salary$player_name == roster_name)[1]
+
+            if (!is.na(roster_row)) {
+              projections_for_val$salary[proj_row] <- roster_salary$salary[roster_row]
+              projections_for_val$is_minor_contract[proj_row] <- roster_salary$is_minor_contract[roster_row]
+              # Update player_name to CBS roster name so downstream consumers
+              # (trade analyzer, waiver recommender) can find them by roster name
+              projections_for_val$player_name[proj_row] <- roster_name
+              matched_count <- matched_count + 1
+            }
+          }
+        }
+
+        if (matched_count > 0) {
+          cat(sprintf("  [OK] Fuzzy matched %d additional roster players to projections\n",
+                      matched_count))
+        }
+      }
+    }
   } else {
     projections_for_val <- projections
   }

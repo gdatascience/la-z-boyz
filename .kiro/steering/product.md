@@ -24,5 +24,6 @@ La-Z-Boyz of Summer is a fantasy baseball analytics tool for a 16-team CBS H2H P
 - Auction/draft cap: $260 per team
 - In-season salary cap: $300 per team
 - Keeper cap: $80 max kept salary per team
-- Keeper rules: Standard contracts escalate +$4/year; minor league contracts follow a $0→$1→$2→$3 track then +$4/year
+- Keeper rules: Standard contracts escalate +$4/year
+- Minor league system: Players at $0 are "Minor Leaguers" — they stay at $0 and don't count toward the active roster as long as they remain below promotion thresholds (130 AB or 50 IP). Once promoted (or threshold exceeded), they enter a rookie contract at $1* and escalate $1→$2→$3 before switching to the standard +$4/year track. Dropped minor leaguers lose their salary track.
 - Roster slots: C, 1B, 2B, 3B, SS, OF×3, U, SP×5, RP×2

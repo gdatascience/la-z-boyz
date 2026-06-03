@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<!-- Minimal fixture for testing parse_rosters.R -->
+<!-- Contains 2 teams with a few batters and pitchers each -->
+<html lang="en">
+<head><meta charset="UTF-8"><title>La-Z-Boyz of Summer - Test Fixture</title></head>
+<body>
+<div id="lineup_views">
+
+<!-- Team 1: Batters -->
+<table class="data data3 pinHeader borderTop" style="width: 100%; padding: 0px;">
+<tbody>
+<tr class="title"><td colspan="12">Test Team Alpha Batters</td></tr>
+<tr class="label"><td>Pos</td><td>Player</td><td>Opp</td><td>Schedule</td><td>%Own</td><td>%St</td><td>Salary</td><td>Contract</td><td>$</td><td>Pts/G</td><td>Pts/W</td><td>Total</td></tr>
+<tr id="Batters_Row_1" class="playerRow Batters" align="right" valign="top">
+  <td align="left" class="playerPosition">C</td>
+  <td align="left"><a class="playerLink" aria-label=" Adley Rutschman " href="https://l-z-bs.baseball.cbssports.com/players/playerpage/2820718">Adley Rutschman</a> <span class="playerPositionAndTeam">C,1B &#8226; BAL</span></td>
+  <td align="left"><div>NYY</div></td>
+  <td align="left">Home: 3</td>
+  <td align="right">99%</td>
+  <td align="right">92%</td>
+  <td align="right">18%</td>
+  <td align="right">0%</td>
+  <td align="right">$25</td>
+  <td align="right">2.50</td>
+  <td align="right">15.0</td>
+  <td align="right">180</td>
+</tr>
+<tr id="Batters_Row_2" class="playerRow Batters" align="right" valign="top">
+  <td align="left" class="playerPosition">SS</td>
+  <td align="left"><a class="playerLink" aria-label=" Gunnar Henderson " href="https://l-z-bs.baseball.cbssports.com/players/playerpage/2826218">Gunnar Henderson</a> <span class="playerPositionAndTeam">SS,3B &#8226; BAL</span></td>
+  <td align="left"><div>NYY</div></td>
+  <td align="left">Home: 3</td>
+  <td align="right">99%</td>
+  <td align="right">95%</td>
+  <td align="right">22%</td>
+  <td align="right">0%</td>
+  <td align="right">$42</td>
+  <td align="right">3.20</td>
+  <td align="right">19.2</td>
+  <td align="right">250</td>
+</tr>
+<tr id="Batters_Row_3" class="playerRow Batters benchPlayer" align="right" valign="top">
+  <td align="left" class="playerPosition">OF</td>
+  <td align="left"><a class="playerLink" aria-label=" Jackson Holliday " href="https://l-z-bs.baseball.cbssports.com/players/playerpage/2910001">Jackson Holliday</a> <span class="playerPositionAndTeam">2B,OF &#8226; BAL</span> <div style="margin-right:5px;float:right;cursor:default;" class="icon-10 roster-status-icon-color actionButtonSm icon-m StatusSm tooltip" title="Player is in the Minors"></div></td>
+  <td align="left"><div>NYY</div></td>
+  <td align="left">Home: 3</td>
+  <td align="right">75%</td>
+  <td align="right">30%</td>
+  <td align="right">5%</td>
+  <td align="right">0%</td>
+  <td align="right">$2*</td>
+  <td align="right">1.80</td>
+  <td align="right">10.8</td>
+  <td align="right">85</td>
+</tr>
+</tbody></table>
+
+<!-- Team 1: Pitchers -->
+<table class="data pinHeader" style="width: 100%; padding: 0px;">
+<tbody>
+<tr class="title"><td colspan="12">Test Team Alpha Pitchers</td></tr>
+<tr class="label"><td>Pos</td><td>Player</td><td>Opp</td><td>Schedule</td><td>%Own</td><td>%St</td><td>Salary</td><td>Contract</td><td>$</td><td>Pts/G</td><td>Pts/W</td><td>Total</td></tr>
+<tr id="Pitchers_Row_1" class="playerRow Pitchers" align="right" valign="top">
+  <td align="left" class="playerPosition">SP</td>
+  <td align="left"><a class="playerLink" aria-label=" Corbin Burnes " href="https://l-z-bs.baseball.cbssports.com/players/playerpage/2507358">Corbin Burnes</a> <span class="playerPositionAndTeam">SP &#8226; BAL</span></td>
+  <td align="left"><div>NYY</div></td>
+  <td align="left">Home: 1 (NYY)</td>
+  <td align="right">99%</td>
+  <td align="right">88%</td>
+  <td align="right">25%</td>
+  <td align="right">0%</td>
+  <td align="right">$38</td>
+  <td align="right">12.5</td>
+  <td align="right">12.5</td>
+  <td align="right">145</td>
+</tr>
+<tr id="Pitchers_Row_2" class="playerRow Pitchers" align="right" valign="top">
+  <td align="left" class="playerPosition">RP</td>
+  <td align="left"><a class="playerLink" aria-label=" F&eacute;lix Bautista " href="https://l-z-bs.baseball.cbssports.com/players/playerpage/2744510">F&#233;lix Bautista</a> <span class="playerPositionAndTeam">RP &#8226; BAL</span></td>
+  <td align="left"><div>NYY</div></td>
+  <td align="left">Home: 3</td>
+  <td align="right">80%</td>
+  <td align="right">50%</td>
+  <td align="right">10%</td>
+  <td align="right">0%</td>
+  <td align="right">$5</td>
+  <td align="right">4.00</td>
+  <td align="right">4.0</td>
+  <td align="right">48</td>
+</tr>
+<tr class="footer"><td colspan="12">Active: 16 Reserve: 6 Minors: 1 Active salary: 92.00 Total salary: 112.00</td></tr>
+</tbody></table>
+
+<div class="spacer10"></div>
+
+<!-- Team 2: Batters -->
+<table class="data data3 pinHeader borderTop" style="width: 100%; padding: 0px;">
+<tbody>
+<tr class="title"><td colspan="12">Test Team Beta Batters</td></tr>
+<tr class="label"><td>Pos</td><td>Player</td><td>Opp</td><td>Schedule</td><td>%Own</td><td>%St</td><td>Salary</td><td>Contract</td><td>$</td><td>Pts/G</td><td>Pts/W</td><td>Total</td></tr>
+<tr id="Batters_Row_1" class="playerRow Batters" align="right" valign="top">
+  <td align="left" class="playerPosition">1B</td>
+  <td align="left"><a class="playerLink" aria-label=" Freddie Freeman " href="https://l-z-bs.baseball.cbssports.com/players/playerpage/1660162">Freddie Freeman</a> <span class="playerPositionAndTeam">1B &#8226; LAD</span></td>
+  <td align="left"><div>@SF</div></td>
+  <td align="left">Away: 3 (@SF)</td>
+  <td align="right">99%</td>
+  <td align="right">90%</td>
+  <td align="right">20%</td>
+  <td align="right">0%</td>
+  <td align="right">$35</td>
+  <td align="right">2.80</td>
+  <td align="right">16.8</td>
+  <td align="right">210</td>
+</tr>
+<tr id="Batters_Row_2" class="playerRow Batters" align="right" valign="top">
+  <td align="left" class="playerPosition">OF</td>
+  <td align="left"><a class="playerLink" aria-label=" Mookie Betts " href="https://l-z-bs.baseball.cbssports.com/players/playerpage/1883864">Mookie Betts</a> <span class="playerPositionAndTeam">SS,OF &#8226; LAD</span></td>
+  <td align="left"><div>@SF</div></td>
+  <td align="left">Away: 3 (@SF)</td>
+  <td align="right">99%</td>
+  <td align="right">95%</td>
+  <td align="right">24%</td>
+  <td align="right">0%</td>
+  <td align="right">$48</td>
+  <td align="right">3.10</td>
+  <td align="right">18.6</td>
+  <td align="right">232</td>
+</tr>
+<tr id="Batters_Row_3" class="playerRow Batters benchPlayer" align="right" valign="top">
+  <td align="left" class="playerPosition">3B</td>
+  <td align="left"><a class="playerLink" aria-label=" Jos&eacute; Ram&iacute;rez " href="https://l-z-bs.baseball.cbssports.com/players/playerpage/1899498">Jos&#233; Ram&#237;rez</a> <span class="playerPositionAndTeam">3B &#8226; CLE</span></td>
+  <td align="left"><div>MIN</div></td>
+  <td align="left">Home: 3 (MIN)</td>
+  <td align="right">99%</td>
+  <td align="right">98%</td>
+  <td align="right">28%</td>
+  <td align="right">0%</td>
+  <td align="right">$40</td>
+  <td align="right">3.00</td>
+  <td align="right">18.0</td>
+  <td align="right">220</td>
+</tr>
+</tbody></table>
+
+<!-- Team 2: Pitchers -->
+<table class="data pinHeader" style="width: 100%; padding: 0px;">
+<tbody>
+<tr class="title"><td colspan="12">Test Team Beta Pitchers</td></tr>
+<tr class="label"><td>Pos</td><td>Player</td><td>Opp</td><td>Schedule</td><td>%Own</td><td>%St</td><td>Salary</td><td>Contract</td><td>$</td><td>Pts/G</td><td>Pts/W</td><td>Total</td></tr>
+<tr id="Pitchers_Row_1" class="playerRow Pitchers" align="right" valign="top">
+  <td align="left" class="playerPosition">SP</td>
+  <td align="left"><a class="playerLink" aria-label=" Clayton Kershaw " href="https://l-z-bs.baseball.cbssports.com/players/playerpage/1502938">Clayton Kershaw</a> <span class="playerPositionAndTeam">SP &#8226; LAD</span></td>
+  <td align="left"><div>@SF</div></td>
+  <td align="left">Away: 1 (@SF)</td>
+  <td align="right">65%</td>
+  <td align="right">40%</td>
+  <td align="right">8%</td>
+  <td align="right">0%</td>
+  <td align="right">$10</td>
+  <td align="right">9.00</td>
+  <td align="right">9.0</td>
+  <td align="right">72</td>
+</tr>
+<tr class="footer"><td colspan="12">Active: 16 Reserve: 6 Minors: 0 Active salary: 110.00 Total salary: 133.00</td></tr>
+</tbody></table>
+
+</div>
+</body>
+</html>

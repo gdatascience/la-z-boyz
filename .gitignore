@@ -1,0 +1,19 @@
+# Data files (league imports, cached API responses, processed data)
+data/**
+!data/README.md
+!data/league_constitution.rds
+!data/imports/
+data/imports/**
+!data/imports/README.md
+!data/cache/
+data/cache/**
+!data/cache/README.md
+
+# R session files
+.Rhistory
+.RData
+.Rproj.user/
+
+# OS files
+.DS_Store
+Thumbs.db

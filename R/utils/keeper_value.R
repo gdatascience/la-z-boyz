@@ -125,3 +125,112 @@ compute_keeper_surplus <- function(projected_values, projected_salaries,
     npv_surplus = npv_surplus
   )
 }
+
+
+#' Age-adjusted value decay multiplier
+#'
+#' Returns a per-year multiplier for projecting future dollar values based on
+#' player age. Young players (< 27) maintain or grow in value, prime-age
+#' players (27-30) hold steady, and older players decline more steeply.
+#'
+#' This replaces the flat 0.95 decay used in the basic keeper valuation.
+#'
+#' @param current_age Integer: player's current age (NA returns flat 0.95)
+#' @param years_ahead Integer: number of future years to project
+#' @return Numeric vector of multipliers (length = years_ahead), applied
+#'   cumulatively to current dollar_value. Values > 1.0 indicate growth.
+#' @examples
+#' # 24-year-old: slight growth then plateau
+#' age_decay_multiplier(24, 5)  # e.g., 1.02, 1.02, 1.00, 0.98, 0.97
+#'
+#' # 33-year-old: steep decline
+#' age_decay_multiplier(33, 5)  # e.g., 0.90, 0.87, 0.83, 0.78, 0.73
+age_decay_multiplier <- function(current_age, years_ahead = 5) {
+  if (is.na(current_age) || is.null(current_age)) {
+    # Unknown age: use flat 0.95 per year (legacy behavior)
+    return(0.95 ^ seq_len(years_ahead))
+  }
+
+  # Annual change rates by age bucket (cumulative applied each year)
+  # Based on typical MLB aging curves for fantasy production:
+  #   Pre-prime (< 27): slight growth as player develops
+  #   Prime (27-30): peak production, minimal change
+  #   Post-prime (31-33): gradual decline
+  #   Late career (34+): steep decline
+  multipliers <- numeric(years_ahead)
+  for (i in seq_len(years_ahead)) {
+    age_at_year <- current_age + i
+
+    annual_rate <- if (age_at_year <= 25) {
+      1.03   # still developing, slight growth
+    } else if (age_at_year <= 27) {
+      1.01   # approaching peak
+    } else if (age_at_year <= 30) {
+      0.98   # prime but slight erosion
+    } else if (age_at_year <= 33) {
+      0.93   # noticeable decline
+    } else if (age_at_year <= 36) {
+      0.88   # steep decline
+    } else {
+      0.82   # cliff
+    }
+
+    if (i == 1) {
+      multipliers[i] <- annual_rate
+    } else {
+      multipliers[i] <- multipliers[i - 1] * annual_rate
+    }
+  }
+
+  multipliers
+}
+
+
+#' Compute age-adjusted keeper surplus
+#'
+#' Like compute_keeper_surplus() but uses age-based value decay instead of
+#' a flat annual rate. Produces more realistic projections for young stars
+#' (value grows) and aging veterans (value drops faster than flat 0.95).
+#'
+#' @param current_dollar_value Numeric: player's current season dollar value
+#' @param projected_salaries Numeric vector: salary for each future year
+#'   (from project_keeper_salary())
+#' @param current_age Integer: player's current age (NA falls back to flat decay)
+#' @param discount_rate Numeric: NPV discount rate (default 0.9)
+#' @return List with:
+#'   \describe{
+#'     \item{annual_surplus}{Numeric vector: projected value - salary each year}
+#'     \item{total_surplus}{Numeric: undiscounted sum}
+#'     \item{npv_surplus}{Numeric: discounted NPV}
+#'     \item{projected_values}{Numeric vector: age-adjusted value per year}
+#'     \item{decay_multipliers}{Numeric vector: cumulative decay applied}
+#'   }
+#' @export
+compute_age_adjusted_keeper_surplus <- function(current_dollar_value,
+                                                 projected_salaries,
+                                                 current_age = NA,
+                                                 discount_rate = 0.9) {
+  if (!is.numeric(current_dollar_value) || length(current_dollar_value) != 1) {
+    stop("current_dollar_value must be a single numeric value")
+  }
+  if (!is.numeric(projected_salaries) || length(projected_salaries) == 0) {
+    stop("projected_salaries must be a non-empty numeric vector")
+  }
+
+  years_ahead <- length(projected_salaries)
+
+  # Get age-adjusted decay multipliers
+  decay <- age_decay_multiplier(current_age, years_ahead)
+
+  # Project future values
+  projected_values <- current_dollar_value * decay
+
+  # Compute surplus using existing function
+  result <- compute_keeper_surplus(projected_values, projected_salaries, discount_rate)
+
+  # Add extra info
+  result$projected_values <- projected_values
+  result$decay_multipliers <- decay
+
+  result
+}

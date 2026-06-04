@@ -31,6 +31,13 @@
 - This is a solo personal project — commit and push directly to `main`. No feature branches or PRs.
 - Write clear commit messages but don't overthink process.
 
+## Running R Code
+
+- **Always write R code to a temp file and execute it** rather than using `Rscript -e '...'` inline. Shell quoting (single quotes, double quotes, dollar signs, backslashes) breaks multi-line R code when passed through the terminal.
+- Pattern: write code to a `.R` file (e.g., `/tmp/analysis.R`), then run `Rscript /tmp/analysis.R`.
+- For trivial one-liners that use only double quotes internally, `Rscript -e "..."` is acceptable.
+- Never use single-quoted `Rscript -e '...'` with R code that itself contains single quotes, dollar signs, or backslashes.
+
 ## Common Commands
 
 ```sh

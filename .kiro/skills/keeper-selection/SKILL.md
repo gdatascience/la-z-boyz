@@ -43,6 +43,7 @@ Rank keepers by:
 3. **Positional scarcity** — premium positions (C, SS) get tiebreaker edge
 4. **Age/trajectory** — younger players with rising value preferred over declining veterans
 5. **Minor league upside** — prospects on cheap contracts have asymmetric upside
+6. **Industry prospect rankings** — for players without MLB stats, use FanGraphs FV, MLB Pipeline Top 100, or Just Baseball rankings to manually assess keeper value (the model assigns $0 to unproven prospects)
 
 ## Key Constants
 

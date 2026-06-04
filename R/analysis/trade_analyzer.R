@@ -1020,3 +1020,96 @@ build_trade_justification <- function(value_diff, pts_change, salary_impact,
 
   paste(reasons, collapse = "\n")
 }
+
+
+# --- Rental Trade Support ---
+
+#' Analyze a trade with rental players excluded from keeper valuation
+#'
+#' Wraps analyze_trade() but treats specified players as one-year rentals.
+#' Rental players contribute to pts/wk and salary impact for THIS season
+#' but are excluded from keeper NPV calculations (assumed dropped after year).
+#'
+#' This handles the common scenario of absorbing a bad contract (e.g.,
+#' Bregman at $44) alongside valuable keeper pieces (e.g., Mason Miller $2*).
+#'
+#' @param give Character vector: players being traded away
+#' @param receive Character vector: players being received
+#' @param rental_players Character vector: players in `receive` that are
+#'   one-year rentals (will be dropped after season, excluded from keeper NPV)
+#' @param my_team Character: owner's team name
+#' @param valuations Data frame: player valuations
+#' @param rosters Data frame: full league rosters
+#' @param standings Data frame: current standings
+#' @param roster_slots Named vector: position slots (optional)
+#' @param draft_data Data frame: draft data (optional)
+#' @return List: same structure as analyze_trade() output, plus:
+#'   \describe{
+#'     \item{rental_players}{Character vector: which players are rentals}
+#'     \item{keepable_keeper_analysis}{List: keeper analysis excluding rentals}
+#'     \item{keepable_3yr_npv}{Numeric: total 3yr NPV of keepable pieces only}
+#'   }
+#' @export
+analyze_trade_with_rentals <- function(give, receive, rental_players,
+                                        my_team, valuations, rosters, standings,
+                                        roster_slots = NULL, draft_data = NULL) {
+  # Validate rental players are in the receive list
+  invalid_rentals <- rental_players[!tolower(rental_players) %in% tolower(receive)]
+  if (length(invalid_rentals) > 0) {
+    stop(sprintf(
+      "rental_players must be a subset of receive. Not found: %s",
+      paste(invalid_rentals, collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  # Run the standard trade analysis
+  result <- analyze_trade(
+    give = give,
+    receive = receive,
+    my_team = my_team,
+    valuations = valuations,
+    rosters = rosters,
+    standings = standings,
+    roster_slots = roster_slots,
+    draft_data = draft_data
+  )
+
+  # Separate keeper analysis into rental vs. keepable
+  receive_keeper <- result$keeper_analysis$receive
+  keepable_keeper <- receive_keeper[
+    !tolower(names(receive_keeper)) %in% tolower(rental_players)
+  ]
+
+  # Compute keepable 3yr NPV (excluding rentals)
+  keepable_3yr_npv <- sum(vapply(keepable_keeper, function(x) {
+    if (is.null(x$keeper_value_3yr)) 0 else x$keeper_value_3yr
+  }, numeric(1)))
+
+  # Compute rental players' salary impact (they're dead weight for keeper purposes)
+  rental_salaries <- vapply(rental_players, function(pname) {
+    rk <- receive_keeper[[pname]]
+    if (!is.null(rk)) rk$current_salary else 0
+  }, numeric(1))
+  total_rental_salary <- sum(rental_salaries)
+
+  # Add rental-specific info to result
+  result$rental_players <- rental_players
+  result$keepable_keeper_analysis <- keepable_keeper
+  result$keepable_3yr_npv <- keepable_3yr_npv
+  result$rental_salary_burden <- total_rental_salary
+
+  # Update justification with rental context
+  rental_note <- sprintf(
+    "\nRental players (%s): contribute pts/wk this season but will be dropped. Keepable 3yr NPV: $%.1f",
+    paste(rental_players, collapse = ", "),
+    keepable_3yr_npv
+  )
+  result$justification <- paste0(result$justification, rental_note)
+
+  log_info_trade(sprintf(
+    "Rental trade analyzed: rentals=[%s], keepable 3yr NPV=$%.1f",
+    paste(rental_players, collapse = ", "), keepable_3yr_npv
+  ))
+
+  result
+}

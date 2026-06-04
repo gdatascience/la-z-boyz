@@ -28,6 +28,8 @@ la-z-boyz/
 │       ├── trade_report.Rmd
 │       ├── valuation_report.Rmd
 │       └── weekly_summary.Rmd
+├── analysis/                   # Local analysis outputs (gitignored)
+│   └── YYYY-MM-DD_*.md        # Trade evals, waiver recs, keeper analyses
 ├── data/
 │   ├── imports/                # Raw HTML saved from CBS (gitignored)
 │   ├── cache/                  # Processed .rds files (gitignored)

@@ -38,4 +38,8 @@ La-Z-Boyz of Summer is a fantasy baseball analytics tool for a 16-team CBS H2H P
 
 - **Prospect rankings**: The system has no external prospect ranking data (FanGraphs FV, MLB Pipeline Top 100, Just Baseball). Players without MLB stats (e.g., Thomas White, Zyhir Hope) get $0 valuations. Manual web research is needed to assess prospect value until a ranking ingestion module is built.
 - **Limited-sample players**: Players with <50 games of current-season data (IL returnees, recent call-ups) are undervalued by the projection model. Use real-world scouting + prior-year track records to override.
-- **Pitcher pts/wk disparity**: Even elite SP produce ~7-8 pts/wk vs. batters at 15-18. This is a structural feature of H2H points scoring, not a model bug — but it means pitcher-heavy trade packages look worse in raw scoring comparisons than they really are.
+- **SP pts/wk is structurally misleading**: The model averages SP production across all weeks (including IL/bye/skip weeks), which crushes their pts/wk. A healthy ace actually produces 15-20+ pts on start weeks and 30-40 on two-start weeks. In H2H, this lumpiness is a *feature* — a single dominant start can swing a matchup. When evaluating SP in trades:
+  - Do NOT use the model's raw pts/wk for aces. Manually estimate based on starts-per-week and per-start scoring.
+  - A top-10 SP who's healthy and pitching well is worth 10-12 pts/wk (factoring one start most weeks, two starts some weeks).
+  - The "SP ace bonus" in the trade scorer (0-15) should be applied aggressively (10-15) for any SP performing at elite level.
+  - Losing an ace mid-season has outsized impact in H2H because replacement-level SP starts actively lose you points — they don't just produce less, they can go negative.

@@ -81,6 +81,53 @@ tests/
 - **Roster**: C, 1B, 2B, 3B, SS, OF×3, U, SP×5, RP×2 (27-man)
 - **FAAB**: $250 budget, $1 minimum bid
 
+## Methodology
+
+The analytics engine uses several established data science techniques adapted for fantasy baseball economics.
+
+### Marcel Projections (Weighted Ensemble)
+
+Rest-of-season projections use a [Modified Marcel system](https://github.com/gdatascience/la-z-boyz/blob/main/R/analysis/projection_model.R) — a multi-season weighted average with regression to the mean. Recent seasons carry more weight (5/4/3), then each stat is regressed toward league-average rates based on sample size:
+
+```r
+# Regression factor: more data → less regression toward league mean
+reg_factor <- REGRESSION_PA / (REGRESSION_PA + total_weighted_pa)
+
+# Blend player rate with league average
+regressed_rate <- player_rate * (1 - reg_factor) + league_rate * reg_factor
+```
+
+Players with 3+ seasons of data get tight confidence intervals (±15%); rookies with one season get wide bands (±40%). This is a Bayesian-flavored shrinkage estimator — the prior is the league average, and the posterior converges toward the player's true talent as sample size grows.
+
+### Age Curves
+
+Projections are adjusted with position-specific [aging curves](https://github.com/gdatascience/la-z-boyz/blob/main/R/analysis/projection_model.R) that model the non-linear decline of MLB performance. Pre-peak players (< 27) get a slight growth adjustment; post-peak players decline with mild quadratic acceleration:
+
+```r
+# Post-peak decline accelerates with age (quadratic term)
+adjustment <- 1 - (decline_rate * years_from_peak + 0.001 * years_from_peak^2)
+```
+
+### Dollar Valuation (Points Above Replacement)
+
+[Player dollar values](https://github.com/gdatascience/la-z-boyz/blob/main/R/analysis/player_valuation.R) are computed via a PAR (Points Above Replacement) model with positional scarcity. Replacement level at each position is defined as the (slots × 16 + 1)th ranked player — then the total salary pool ($260 × 16 = $4,160) is distributed proportionally to each player's PAR.
+
+### Keeper NPV (Net Present Value)
+
+[Multi-year keeper surplus](https://github.com/gdatascience/la-z-boyz/blob/main/R/utils/keeper_value.R) is computed as discounted future value minus escalating salary:
+
+```r
+# Annual surplus discounted at 0.9 per year
+discount_factors <- 0.9 ^ (1:years_ahead)
+npv_surplus <- sum((projected_values - projected_salaries) * discount_factors)
+```
+
+Young players on minor contracts ($0→$1→$2→$3→+$4/year) generate outsized NPV because their salary stays far below market value through their peak years.
+
+### Statcast Quality-of-Contact Adjustments
+
+When available, [Statcast metrics](https://github.com/gdatascience/la-z-boyz/blob/main/R/analysis/projection_model.R) (exit velocity, barrel rate, xBA, xSLG) are used to adjust projections for batters whose traditional stats under- or over-perform their contact quality. The adjustment is capped at ±10% to avoid over-fitting to noisy batted-ball data.
+
 ## Trade Scoring System
 
 Trades are scored 0–100 using three weighted components:

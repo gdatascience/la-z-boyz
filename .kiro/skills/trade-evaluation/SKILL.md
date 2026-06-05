@@ -51,7 +51,11 @@ Three components weighted by competitive context:
 
 ### Known Model Limitations — Apply Manual Adjustments
 
-- **Pitchers are undervalued in pts/wk**: Even elite SP (Skenes, Williams) produce ~7-8 pts/wk vs. batters at 15-18. Award SP ace bonus (+10-15) for top-5 system pitchers.
+- **SP pts/wk is structurally broken for aces**: The model averages SP production across all weeks (including IL/bye weeks), producing ~4-8 pts/wk for aces. In reality, a healthy elite SP produces 15-25 pts on start weeks and 30-40+ on two-start weeks. In H2H, this lumpiness is enormously valuable — a single dominant start can swing a weekly matchup. When evaluating SP in trades:
+  - Do NOT use the model's raw pts/wk for any SP performing at ace level. Manually estimate: healthy ace = 10-12 pts/wk (averaging start and non-start weeks over a season).
+  - Apply SP ace bonus aggressively (+10-15) for any top-10 SP who is currently healthy and pitching well.
+  - Losing an ace mid-season is worse than the numbers suggest: replacement-level SP starts actively lose points (negative outings), they don't just produce less.
+  - Two-start weeks from an ace are worth ~35-40 pts — equivalent to an elite batter's best week. Factor this into immediate impact assessment.
 - **New/limited-data players are undervalued**: Players with <50 games of 2026 data (e.g., Chourio returning from IL, Henderson in a slump) get punished by the projection model. Override 3yr keeper NPV with real-world assessment for established young stars.
 - **Prospects with no MLB stats get $0 valuation**: Thomas White, Zyhir Hope, etc. Use industry prospect rankings (FanGraphs FV, MLB Pipeline, Just Baseball Top 100) to assign prospect bonus points (elite top-10: +30, top-25: +20, top-50: +15, top-100: +10).
 - **"Rental" players with toxic contracts**: When receiving a player you plan to drop after the season (e.g., Bregman $44), only count their pts/wk for immediate impact — exclude them from keeper NPV entirely.

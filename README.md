@@ -7,7 +7,8 @@ Fantasy baseball analytics tool for the La-Z-Boyz of Summer league — a 16-team
 - **Player projections** — Marcel-style weighted projections using current + historical stats with aging curves
 - **Dollar valuations** — Points Above Replacement converted to auction dollar values with positional scarcity adjustments
 - **Keeper analysis** — Multi-year NPV surplus calculations factoring salary escalation
-- **Trade evaluation** — Multi-dimensional trade analysis: surplus value, pts/week impact, salary cap, positional fit, prospect upside
+- **Trade evaluation** — Composite scoring system (0–100, letter grades A through F) comparing trades across immediate impact, keeper value, and strategic fit. Context-aware weighting for contend/middle/rebuild modes.
+- **Prospect rankings** — Manually-maintained industry consensus rankings (FanGraphs, MLB Pipeline, Just Baseball) for players without MLB stats
 - **Waiver recommendations** — FAAB bid suggestions based on surplus value, competition, and season timing
 - **Roster optimization** — Lineup slot recommendations for weekly matchups
 
@@ -18,8 +19,9 @@ Fantasy baseball analytics tool for the La-Z-Boyz of Summer league — a 16-team
 Rscript R/ingest/fetch_players.R
 Rscript R/ingest/fetch_rules.R
 
-# 2. Update rosters (requires manual HTML export from CBS)
-#    Save "All Teams" page as HTML → drop into data/imports/rosters.html
+# 2. Update rosters (CSV export from CBS)
+#    Roster Overview > All Teams > select period > CSV export button
+#    Drop the file into data/imports/ (auto-detected by filename)
 Rscript R/ingest/parse_rosters.R
 
 # 3. Run the full analysis pipeline
@@ -31,15 +33,25 @@ Rscript R/pipeline.R
 ```
 R/
 ├── pipeline.R          # Master orchestrator
-├── ingest/             # Data ingestion from CBS (API + HTML parsing)
-├── analysis/           # Core analytics (projections, valuations, trades, waivers)
+├── ingest/             # Data ingestion (CBS API, CSV parsing, HTML parsing)
+│   └── fetch_prospect_rankings.R  # Prospect tier lookups (manually maintained)
+├── analysis/           # Core analytics
+│   ├── evaluate_trade_offer.R     # One-call trade evaluation (lookups + scoring + output)
+│   ├── trade_scorer.R             # 0-100 composite scoring for trade comparisons
+│   ├── trade_analyzer.R           # Trade value engine
+│   ├── player_valuation.R         # Dollar values via PAR + scarcity
+│   ├── projection_model.R         # Statistical projections
+│   ├── roster_optimizer.R         # Lineup optimization
+│   └── waiver_recommender.R       # Waiver pickup recommendations
 ├── utils/              # Shared pure functions (scoring, salary rules, serialization)
 └── reports/            # R Markdown report templates
 
 data/
-├── imports/            # Raw HTML exports from CBS (gitignored)
+├── imports/            # CBS exports — CSV rosters, HTML standings/constitution (gitignored)
 ├── cache/              # Processed .rds data files (gitignored)
 └── league_constitution.rds  # Parsed league rules (committed)
+
+analysis/               # Trade evals, waiver recs, keeper analyses (gitignored, local only)
 
 tests/
 ├── testthat/           # Property-based test suite (100+ iterations per property)
@@ -54,7 +66,8 @@ tests/
 | League rules | CBS public API | `Rscript R/ingest/fetch_rules.R` |
 | Stats (batting) | CBS public API | `Rscript R/ingest/fetch_stats.R` |
 | Draft results | CBS public API | `Rscript R/ingest/fetch_draft.R` |
-| Rosters/salaries | Manual HTML export | Save from CBS → `data/imports/rosters.html` → `Rscript R/ingest/parse_rosters.R` |
+| Prospect rankings | Manual (web research) | Update via `fetch_prospect_rankings.R` functions |
+| Rosters/salaries | CBS CSV export | Roster Overview → All Teams → CSV export → `data/imports/` → `Rscript R/ingest/parse_rosters.R` |
 | Standings | Manual HTML export | Save from CBS → `data/imports/standings.html` → `Rscript R/ingest/parse_standings.R` |
 | Constitution | Manual HTML export | Save from CBS → `data/imports/constitution.html` → `Rscript R/ingest/parse_constitution.R` |
 
@@ -67,6 +80,29 @@ tests/
 - **Keeper rules**: Standard contracts +$4/year; minor league track $0→$1→$2→$3 then +$4/year
 - **Roster**: C, 1B, 2B, 3B, SS, OF×3, U, SP×5, RP×2 (27-man)
 - **FAAB**: $250 budget, $1 minimum bid
+
+## Trade Scoring System
+
+Trades are scored 0–100 using three weighted components:
+
+| Component | Default Weight | What it measures |
+|-----------|----------------|------------------|
+| Immediate Impact | 30% | Pts/wk change (batting + pitching) |
+| Value & Keeper | 50% | Surplus change (40%) + 3yr keeper NPV (60%) |
+| Strategic Fit | 20% | Cap freed + prospect bonus + positional fit − league dynamic penalties |
+
+Weights shift by competitive mode: contenders weight immediate impact higher (40/40/20), rebuilders weight value higher (15/65/20).
+
+**Grade scale:** A (80+), B+ (65–79), B (56–64), B- (53–55), C+ (48–55), C (40–47), D (below 40), F (below 10)
+
+Usage:
+```sh
+# Trade evaluation uses evaluate_trade_offer.R — called via Kiro chat
+# or source it directly in R:
+source("R/analysis/evaluate_trade_offer.R")
+result <- evaluate_offer(give = c("Jose Ramirez"), receive = c("Gunnar Henderson", "Braxton Ashcraft"))
+print_evaluation(result)
+```
 
 ## Running Tests
 

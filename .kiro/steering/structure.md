@@ -10,7 +10,7 @@ la-z-boyz/
 │   │   ├── fetch_rules.R       # Pull league scoring rules
 │   │   ├── fetch_draft.R       # Pull draft results by year
 │   │   ├── parse_constitution.R # Parse league constitution HTML
-│   │   ├── parse_rosters.R     # Parse saved roster/salary HTML
+│   │   ├── parse_rosters.R     # Parse CBS CSV roster export
 │   │   └── parse_standings.R   # Parse saved standings HTML
 │   ├── analysis/               # Core analytics modules
 │   │   ├── projection_model.R  # Statistical projections (Marcel-style)

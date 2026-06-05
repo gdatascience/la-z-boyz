@@ -37,6 +37,11 @@
 - Pattern: write code to a `.R` file (e.g., `/tmp/analysis.R`), then run `Rscript /tmp/analysis.R`.
 - For trivial one-liners that use only double quotes internally, `Rscript -e "..."` is acceptable.
 - Never use single-quoted `Rscript -e '...'` with R code that itself contains single quotes, dollar signs, or backslashes.
+- **Do NOT create one-off scratch scripts in `exploration/`** for trade analysis, waiver evaluation, or similar tasks. Instead, use the reusable evaluation modules:
+  - `R/analysis/evaluate_trade_offer.R` — `evaluate_offer()` handles player lookups, manual overrides, scoring, and formatted output for any trade proposal.
+  - `R/analysis/trade_scorer.R` — `score_trade()` for raw scoring when you already have the numbers.
+  - `R/ingest/fetch_prospect_rankings.R` — `lookup_prospect()` for prospect tier lookups.
+- Only create new exploration scripts for genuinely new functionality (e.g., testing a new API, prototyping a new module). Analysis of specific trades should go through the existing evaluation pipeline.
 
 ## Common Commands
 

@@ -7,7 +7,7 @@ La-Z-Boyz of Summer is a fantasy baseball analytics tool for a 16-team CBS H2H P
 - Player projection using weighted historical stats and aging curves
 - Dollar valuation via Points Above Replacement (PAR) with positional scarcity adjustments
 - Keeper value analysis with multi-year NPV surplus calculations
-- Trade evaluation comparing net value exchange
+- Trade evaluation comparing net value exchange with automatic positional awareness
 - Waiver wire recommendations based on surplus value
 - Roster optimization for lineup construction
 

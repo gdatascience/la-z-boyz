@@ -128,7 +128,9 @@ lookup_player <- function(player_name, overrides = NULL) {
 #'   with optional keys: real_pts_wk, real_3yr_npv, real_5yr_npv, real_surplus.
 #'   Example: list("Gunnar Henderson" = list(real_3yr_npv = 80))
 #' @param prospect_bonus Numeric: prospect upside bonus for scoring (0-35)
-#' @param positional_fit Numeric: positional fit bonus (0-25)
+#' @param positional_fit Numeric or NULL: positional fit bonus (0-25).
+#'   If NULL (default), automatically computed from roster data.
+#'   Pass a numeric to override the auto-computation.
 #' @param strategic_penalty Numeric: league dynamics penalty (0-30)
 #' @param sp_ace_bonus Numeric: SP undervaluation adjustment (0-15)
 #' @param injury_penalty Numeric: injury penalty (0-15)
@@ -139,7 +141,7 @@ lookup_player <- function(player_name, overrides = NULL) {
 evaluate_offer <- function(give, receive, my_team = "Fightin' Irish",
                            overrides = list(),
                            prospect_bonus = 0,
-                           positional_fit = 0,
+                           positional_fit = NULL,
                            strategic_penalty = 0,
                            sp_ace_bonus = 0,
                            injury_penalty = 0,
@@ -195,6 +197,23 @@ evaluate_offer <- function(give, receive, my_team = "Fightin' Irish",
   surplus_change <- receive_surplus - give_surplus
   cap_freed <- give_salary - receive_salary
 
+  # Auto-compute positional fit if not manually specified
+  if (is.null(positional_fit)) {
+    rosters <- .trade_eval_env$rosters
+    my_roster <- rosters[tolower(rosters$team_name) == tolower(my_team), , drop = FALSE]
+    pos_fit <- compute_positional_fit(
+      my_roster    = my_roster,
+      give_names   = give,
+      receive_names = receive,
+      all_rosters  = rosters,
+      valuations   = .trade_eval_env$valuations
+    )
+    positional_fit <- pos_fit$score
+    positional_fit_details <- pos_fit$details
+  } else {
+    positional_fit_details <- "  (manually specified)"
+  }
+
   trade_score <- score_trade(
     pts_wk_change      = pts_wk_change,
     surplus_change     = surplus_change,
@@ -225,16 +244,21 @@ evaluate_offer <- function(give, receive, my_team = "Fightin' Irish",
     "\n",
     "Pts/wk change: %+.1f | Surplus change: %+.1f\n",
     "Keeper 3yr NPV (keepable): $%.1f | Cap freed: $%d\n",
-    "Context: %s mode\n",
+    "Context: %s mode | Positional fit: %+.1f\n",
     "\n",
     "%s"
   ),
     give_text, receive_text,
     pts_wk_change, surplus_change,
     keeper_3yr_receive, round(cap_freed),
-    context_mode,
+    context_mode, positional_fit,
     format_trade_score(trade_score, paste(receive, collapse = " + "))
   )
+
+  # Append positional details if available
+  if (nchar(positional_fit_details) > 0) {
+    summary <- paste0(summary, "\n\nPositional Analysis:\n", positional_fit_details)
+  }
 
   list(
     score          = trade_score,

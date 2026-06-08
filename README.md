@@ -143,6 +143,8 @@ Trades are scored 0–100 using three weighted components:
 | Value & Keeper | 50% | Surplus change (40%) + 3yr keeper NPV (60%) |
 | Strategic Fit | 20% | Cap freed + prospect bonus + positional fit − league dynamic penalties |
 
+Positional fit is auto-computed from your roster: receiving a player who fills a weak spot earns a bonus (+5 to +15), while receiving a player redundant with an existing starter earns a penalty (-5). The U (utility) slot is treated as a low-priority fallback.
+
 Weights shift by competitive mode: contenders weight immediate impact higher (40/40/20), rebuilders weight value higher (15/65/20).
 
 **Grade scale:** A (80+), B+ (65–79), B (56–64), B- (53–55), C+ (48–55), C (40–47), D (below 40), F (below 10)

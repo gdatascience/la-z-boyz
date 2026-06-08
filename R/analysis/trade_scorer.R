@@ -7,6 +7,228 @@
 #' Designed to be used after analyze_trade() to produce a single comparable
 #' number across different trade options.
 
+# --- Positional Awareness ---
+
+#' Roster slot configuration for the league
+#' Each position maps to the number of starting slots available.
+ROSTER_SLOTS <- list(
+
+  C  = 1,
+  "1B" = 1,
+  "2B" = 1,
+  "3B" = 1,
+  SS = 1,
+  OF = 3,
+  U  = 1,
+  SP = 5,
+  RP = 2
+)
+
+#' Parse a player's eligible positions from the CSV format
+#' @param elig_str Character like "2B,3B,SS,OF" or NA
+#' @return Character vector of positions
+parse_eligible_positions <- function(elig_str) {
+  if (is.na(elig_str) || nchar(trimws(elig_str)) == 0) return(character(0))
+  trimws(strsplit(elig_str, ",")[[1]])
+}
+
+#' Compute positional fit score for a trade
+#'
+#' Evaluates how well received players fill roster needs and how much
+#' giving away players hurts positional depth. Uses the team's current
+#' active roster to determine strength at each position.
+#'
+#' @param my_roster Data frame: full roster for my team (from rosters.rds)
+#' @param give_names Character vector: player names being traded away
+#' @param receive_names Character vector: player names being received
+#' @param all_rosters Data frame: full league rosters (for looking up received players' positions)
+#' @param valuations Data frame: player valuations (for pts/wk comparisons). Optional.
+#' @return List with:
+#'   \describe{
+#'     \item{score}{Numeric: net positional fit score (-25 to +25)}
+#'     \item{details}{Character: human-readable explanation}
+#'     \item{receive_bonus}{Numeric: bonus from filling needs}
+#'     \item{give_penalty}{Numeric: penalty from weakening positions}
+#'   }
+#' @export
+compute_positional_fit <- function(my_roster, give_names, receive_names,
+                                   all_rosters, valuations = NULL) {
+
+  # Only consider active + reserve players for positional strength
+  active_roster <- my_roster[my_roster$roster_section %in% c("Active", "Reserves"), ]
+
+  # Build position strength map: for each position, what's the best player's FPTS?
+  # This tells us which positions are strong vs weak
+  pos_strength <- list()
+  pos_players <- list()
+
+  for (i in seq_len(nrow(active_roster))) {
+    p <- active_roster[i, ]
+    positions <- parse_eligible_positions(p$eligible_positions)
+    # Also include the slot they're currently rostered at (this is where they ACTUALLY play)
+    roster_pos <- p$roster_position
+    if (!roster_pos %in% positions) {
+      positions <- c(positions, roster_pos)
+    }
+    fpts <- if (is.na(p$total_fpts)) 0 else p$total_fpts
+    for (pos in positions) {
+      if (is.null(pos_strength[[pos]])) {
+        pos_strength[[pos]] <- numeric(0)
+        pos_players[[pos]] <- character(0)
+      }
+      pos_strength[[pos]] <- c(pos_strength[[pos]], fpts)
+      pos_players[[pos]] <- c(pos_players[[pos]], p$player_name)
+    }
+  }
+
+  # Sort each position's players by production (descending)
+  for (pos in names(pos_strength)) {
+    ord <- order(pos_strength[[pos]], decreasing = TRUE)
+    pos_strength[[pos]] <- pos_strength[[pos]][ord]
+    pos_players[[pos]] <- pos_players[[pos]][ord]
+  }
+
+  # --- Compute league-average production per position for context ---
+  # Use a simple threshold: if starter FPTS is below league median for that
+
+  # position, it's a "weak" spot. Above 75th percentile = "strong".
+  # For simplicity, use total_fpts across all active starters in the league.
+  all_active <- all_rosters[all_rosters$roster_section == "Active", ]
+  league_pos_medians <- list()
+  for (pos in names(ROSTER_SLOTS)) {
+    pos_fpts <- all_active$total_fpts[all_active$roster_position == pos]
+    pos_fpts <- pos_fpts[!is.na(pos_fpts)]
+    league_pos_medians[[pos]] <- if (length(pos_fpts) > 0) median(pos_fpts) else 100
+  }
+
+  # --- Score received players ---
+  receive_bonus <- 0
+  receive_details <- character(0)
+
+  for (rname in receive_names) {
+    # Look up received player's eligible positions from any roster
+    rrow <- all_rosters[tolower(all_rosters$player_name) == tolower(rname), , drop = FALSE]
+    if (nrow(rrow) == 0) next
+    rrow <- rrow[1, ]
+    r_positions <- parse_eligible_positions(rrow$eligible_positions)
+    # Include U eligibility for all hitters
+    if (rrow$player_type == "Batter" && !"U" %in% r_positions) {
+      r_positions <- c(r_positions, "U")
+    }
+    if (length(r_positions) == 0) next
+
+    # Find the position where this player provides the most upgrade
+    # Prefer actual positions over U (utility is a fallback slot)
+    best_pos <- NULL
+    best_value <- -Inf
+
+    for (pos in r_positions) {
+      n_slots <- if (!is.null(ROSTER_SLOTS[[pos]])) ROSTER_SLOTS[[pos]] else 1
+      current_fpts <- if (!is.null(pos_strength[[pos]])) pos_strength[[pos]] else numeric(0)
+
+      # What's the weakest starter at this position?
+      # (the Nth best player where N = number of slots)
+      weakest_starter_fpts <- if (length(current_fpts) >= n_slots) {
+        current_fpts[n_slots]
+      } else {
+        0  # Empty slot
+      }
+
+      r_fpts <- if (is.na(rrow$total_fpts)) 0 else rrow$total_fpts
+      upgrade <- r_fpts - weakest_starter_fpts
+      median_at_pos <- if (!is.null(league_pos_medians[[pos]])) league_pos_medians[[pos]] else 100
+
+      # Score: how much does this player upgrade the weakest spot?
+      # Filling an empty slot or replacing a below-median starter = big bonus
+      # Replacing an above-median starter = small or no bonus (redundant)
+      if (length(current_fpts) < n_slots) {
+        # Empty slot — big bonus
+        value <- 15
+      } else if (weakest_starter_fpts < median_at_pos * 0.7) {
+        # Weak spot (below 70% of league median) — good bonus if upgrade
+        value <- if (upgrade > 0) min(15, upgrade / 20) else -5
+      } else if (weakest_starter_fpts < median_at_pos) {
+        # Below average — moderate bonus if upgrade
+        value <- if (upgrade > 0) min(10, upgrade / 30) else -5
+      } else {
+        # Strong position — redundant, penalty
+        value <- -5
+      }
+
+      # Penalize U as a fallback — only count it if no better position fits
+      if (pos == "U") {
+        value <- value - 8
+      }
+
+      if (value > best_value) {
+        best_value <- value
+        best_pos <- pos
+      }
+    }
+
+    if (!is.null(best_pos)) {
+      receive_bonus <- receive_bonus + best_value
+      tag <- if (best_value > 5) "fills need"
+             else if (best_value > 0) "mild upgrade"
+             else "redundant"
+      receive_details <- c(receive_details,
+        sprintf("%s → %s (%s, %+.0f)", rname, best_pos, tag, best_value))
+    }
+  }
+
+  # --- Score given players (penalty for weakening positions) ---
+  give_penalty <- 0
+  give_details <- character(0)
+
+  for (gname in give_names) {
+    grow <- my_roster[tolower(my_roster$player_name) == tolower(gname), , drop = FALSE]
+    if (nrow(grow) == 0) next
+    grow <- grow[1, ]
+
+    # Only penalize if this player is an active starter
+    if (grow$roster_section != "Active") next
+
+    pos <- grow$roster_position
+    n_slots <- if (!is.null(ROSTER_SLOTS[[pos]])) ROSTER_SLOTS[[pos]] else 1
+    current_fpts <- if (!is.null(pos_strength[[pos]])) pos_strength[[pos]] else numeric(0)
+
+    g_fpts <- if (is.na(grow$total_fpts)) 0 else grow$total_fpts
+
+    # How many players do we have at this position (including reserves who can fill in)?
+    depth <- length(current_fpts)
+
+    if (depth <= n_slots) {
+      # We're already at minimum depth — losing this player leaves a hole
+      give_penalty <- give_penalty - 10
+      give_details <- c(give_details,
+        sprintf("%s leaves %s thin (-10)", gname, pos))
+    } else if (g_fpts > current_fpts[min(depth, n_slots + 1)]) {
+      # We have depth but this player is clearly our best — mild penalty
+      give_penalty <- give_penalty - 3
+      give_details <- c(give_details,
+        sprintf("%s is top %s but have depth (-3)", gname, pos))
+    }
+    # If we have plenty of depth and this player isn't the best, no penalty
+  }
+
+  # --- Net score ---
+  net_score <- receive_bonus + give_penalty
+  # Clamp to [-25, 25]
+  net_score <- max(-25, min(25, net_score))
+
+  details_text <- paste(c(
+    if (length(receive_details) > 0) paste("  Receive:", receive_details) else NULL,
+    if (length(give_details) > 0) paste("  Give:", give_details) else NULL
+  ), collapse = "\n")
+
+  list(
+    score = round(net_score, 1),
+    details = details_text,
+    receive_bonus = round(receive_bonus, 1),
+    give_penalty = round(give_penalty, 1)
+  )
+}
+
 # --- Constants ---
 
 #' Baseline pts/wk for scoring normalization (JRam-level production)

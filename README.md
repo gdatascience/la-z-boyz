@@ -24,7 +24,12 @@ Rscript R/ingest/fetch_rules.R
 #    Drop the file into data/imports/ (auto-detected by filename)
 Rscript R/ingest/parse_rosters.R
 
-# 3. Run the full analysis pipeline
+# 3. Update standings (CSV export from CBS)
+#    Standings > Overall > CSV export button
+#    Save as data/imports/overall.csv
+Rscript R/ingest/parse_standings.R
+
+# 4. Run the full analysis pipeline
 Rscript R/pipeline.R
 ```
 
@@ -47,7 +52,7 @@ R/
 └── reports/            # R Markdown report templates
 
 data/
-├── imports/            # CBS exports — CSV rosters, HTML standings/constitution (gitignored)
+├── imports/            # CBS exports — CSV rosters/standings, HTML constitution (gitignored)
 ├── cache/              # Processed .rds data files (gitignored)
 └── league_constitution.rds  # Parsed league rules (committed)
 
@@ -68,7 +73,7 @@ tests/
 | Draft results | CBS public API | `Rscript R/ingest/fetch_draft.R` |
 | Prospect rankings | Manual (web research) | Update via `fetch_prospect_rankings.R` functions |
 | Rosters/salaries | CBS CSV export | Roster Overview → All Teams → CSV export → `data/imports/` → `Rscript R/ingest/parse_rosters.R` |
-| Standings | Manual HTML export | Save from CBS → `data/imports/standings.html` → `Rscript R/ingest/parse_standings.R` |
+| Standings | CBS CSV export | Standings → Overall → CSV export → `data/imports/overall.csv` → `Rscript R/ingest/parse_standings.R` |
 | Constitution | Manual HTML export | Save from CBS → `data/imports/constitution.html` → `Rscript R/ingest/parse_constitution.R` |
 
 ## League Configuration

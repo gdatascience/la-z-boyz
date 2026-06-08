@@ -1,64 +1,60 @@
 #!/usr/bin/env Rscript
-#' Parse Standings from Saved CBS HTML
+#' Parse Standings from CBS CSV Export
 #'
-#' Usage: Rscript R/ingest/parse_standings.R
+#' Ingests the CSV standings file exported from CBS
+#' (Standings > Overall > CSV export button).
 #'
-#' Prerequisites:
-#'   1. Save https://l-z-bs.baseball.cbssports.com/standings as HTML
-#'   2. Place the file at data/imports/standings.html
+#' Usage: Rscript R/ingest/parse_standings.R [path/to/file.csv]
+#'
+#' If no path is provided, looks for `overall.csv` in data/imports/.
 #'
 #' Output: data/cache/standings.rds
 #'
-#' Error Handling:
-#'   - If HTML import file is missing, displays instructions with exact CBS URL
-#'   - Validates 16 teams found across 4 divisions
-#'   - Falls back to cached RDS if parse fails
-#'   - Adds metadata attributes (source_file, parsed_at, league_id) to saved RDS
-#'
-#' Validates: Requirements 1.4, 1.5, 1.7
+#' CSV Format (from CBS):
+#'   - Divisions are separated by header rows like "North Division"
+#'   - Column headers appear after each division header:
+#'     Team,W,L,T,PCT,GB,Streak,Div,Wks,PF,Back,PA,
+#'   - Team rows: TeamName,W,L,T,PCT,GB,Streak,DivRecord,Wks,PF,Back,PA,
 
-library(rvest)
-library(dplyr)
+library(here)
 
 # --- Config ---
-import_file <- "data/imports/standings.html"
-output_file <- "data/cache/standings.rds"
+output_file <- here("data/cache/standings.rds")
 EXPECTED_TEAMS <- 16
 EXPECTED_DIVISIONS <- 4
-CBS_STANDINGS_URL <- "https://l-z-bs.baseball.cbssports.com/standings"
 LEAGUE_ID <- "l-z-bs"
 
 # --- Logging utilities ---
-#' Log an error message with timestamp
-#' @param msg Character message to log
-log_error <- function(msg) {
-  message(sprintf("[%s] ERROR: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
-}
+log_error <- function(msg) message(sprintf("[%s] ERROR: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
+log_warn  <- function(msg) message(sprintf("[%s] WARN: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
+log_info  <- function(msg) message(sprintf("[%s] INFO: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
 
-#' Log a warning message with timestamp
-#' @param msg Character message to log
-log_warn <- function(msg) {
-  message(sprintf("[%s] WARN: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
-}
+# --- Find CSV file ---
+find_csv_file <- function(path_arg = NULL) {
+  if (!is.null(path_arg) && file.exists(path_arg)) {
+    return(path_arg)
+  }
 
-#' Log an info message with timestamp
-#' @param msg Character message to log
-log_info <- function(msg) {
-  message(sprintf("[%s] INFO: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
+  import_dir <- here("data/imports")
+
+  # Look for overall.csv or standings*.csv
+  candidates <- c(
+    file.path(import_dir, "overall.csv"),
+    list.files(import_dir, pattern = "^standings.*\\.csv$", full.names = TRUE)
+  )
+  candidates <- candidates[file.exists(candidates)]
+
+  if (length(candidates) == 0) {
+    stop("No standings CSV found in data/imports/. Export from CBS: Standings > Overall > CSV export button.")
+  }
+
+  candidates[1]
 }
 
 # --- Cache fallback ---
-#' Load cached standings RDS if available
-#' @return Data frame of cached standings or NULL if no cache exists
 load_cached_standings <- function() {
   if (file.exists(output_file)) {
-    cached <- tryCatch(
-      readRDS(output_file),
-      error = function(e) {
-        log_error(paste("Cached RDS is corrupted:", e$message))
-        NULL
-      }
-    )
+    cached <- tryCatch(readRDS(output_file), error = function(e) NULL)
     if (!is.null(cached)) {
       cache_time <- attr(cached, "parsed_at")
       if (!is.null(cache_time)) {
@@ -72,224 +68,138 @@ load_cached_standings <- function() {
   NULL
 }
 
-#' Validate standings data frame structure and counts
-#' @param standings_df Data frame to validate
-#' @return TRUE if valid, FALSE otherwise
-validate_standings <- function(standings_df) {
-  if (!is.data.frame(standings_df)) {
-    log_error("Standings data is not a data frame")
-    return(FALSE)
-  }
+# --- Main parser ---
+parse_standings_csv <- function(csv_path) {
+  log_info(paste("Parsing standings from CSV:", csv_path))
 
-  required_cols <- c("division", "team_name", "wins", "losses", "ties", "pct",
-                     "games_back", "streak", "div_record", "magic_number",
-                     "total_points", "points_behind_leader", "points_against",
-                     "games_played", "ppg")
-  missing_cols <- setdiff(required_cols, names(standings_df))
-  if (length(missing_cols) > 0) {
-    log_error(paste("Missing required columns:", paste(missing_cols, collapse = ", ")))
-    return(FALSE)
-  }
+  lines <- readLines(csv_path, warn = FALSE)
 
-  n_teams <- nrow(standings_df)
-  if (n_teams != EXPECTED_TEAMS) {
-    log_warn(sprintf(
-      "Expected %d teams but found %d. Data may be incomplete.",
-      EXPECTED_TEAMS, n_teams
-    ))
-  }
+  all_standings <- list()
+  current_division <- NA_character_
 
-  n_divisions <- length(unique(na.omit(standings_df$division)))
-  if (n_divisions != EXPECTED_DIVISIONS) {
-    log_warn(sprintf(
-      "Expected %d divisions but found %d. Division parsing may have issues.",
-      EXPECTED_DIVISIONS, n_divisions
-    ))
-  }
+  for (line in lines) {
+    trimmed <- trimws(line)
 
-  TRUE
-}
+    # Skip empty lines
+    if (nchar(trimmed) == 0) next
 
-# --- Validate input file exists (Requirement 1.7) ---
-if (!file.exists(import_file)) {
-  log_error(paste("Missing file:", import_file))
-  message(
-    "\n",
-    "========================================================\n",
-    " MISSING FILE: ", import_file, "\n",
-    "========================================================\n",
-    "\n",
-    "The standings HTML file is required for parsing.\n",
-    "Please follow these steps to obtain it:\n",
-    "\n",
-    "  1. Open your browser and log into CBS Sports\n",
-    "  2. Navigate to: ", CBS_STANDINGS_URL, "\n",
-    "  3. Wait for the page to fully load (all divisions visible)\n",
-    "  4. Save the page (Cmd+S / Ctrl+S) as 'Webpage, Complete'\n",
-    "  5. Save the file as 'standings.html' in the following path:\n",
-    "     ", normalizePath("data/imports", mustWork = FALSE), "/standings.html\n",
-    "\n",
-    "Note: You must be logged in to CBS to see full standings data.\n",
-    "========================================================\n"
-  )
-
-  # Attempt cache fallback
-  cached <- load_cached_standings()
-  if (!is.null(cached)) {
-    log_info("Returning cached data since HTML file is missing")
-    invisible(cached)
-  } else {
-    stop("No cached data available. Cannot proceed without standings data.")
-  }
-}
-
-# --- Parse HTML ---
-log_info(paste("Parsing standings from:", import_file))
-page <- tryCatch(
-  read_html(import_file),
-  error = function(e) {
-    log_error(sprintf("Failed to parse HTML file: %s", conditionMessage(e)))
-    log_info("Attempting to use cached data...")
-    cached <- load_cached_standings()
-    if (is.null(cached)) {
-      stop(
-        "Failed to parse HTML file: ", import_file, "\n",
-        "Error: ", conditionMessage(e), "\n",
-        "No cached data available. The file may be corrupted.\n",
-        "Try re-saving from: ", CBS_STANDINGS_URL, "\n"
-      )
-    }
-    return(cached)
-  }
-)
-
-# If cache fallback returned a data frame, skip parsing
-if (is.data.frame(page)) {
-  log_info("Using cached standings data (parse failed)")
-  invisible(page)
-  q(save = "no", status = 0)
-}
-
-tables <- page |> html_elements("table.data")
-
-if (length(tables) == 0) {
-  log_error("No standings tables found in HTML file")
-  cached <- load_cached_standings()
-  if (!is.null(cached)) {
-    log_info("Returning cached data since no tables found in HTML")
-    invisible(cached)
-  } else {
-    stop(
-      "No standings tables found in HTML file: ", import_file, "\n",
-      "The CBS page layout may have changed, or the file was not saved correctly.\n",
-      "Please re-save from: ", CBS_STANDINGS_URL, "\n"
-    )
-  }
-}
-
-# --- Extract standings data (Requirement 1.4) ---
-# Required fields: division, team_name, wins, losses, ties, pct,
-#   games_back, streak, div_record, magic_number, total_points,
-#   points_behind_leader, points_against, games_played (derived), ppg (derived)
-all_standings <- list()
-current_division <- NA_character_
-
-for (tbl in tables) {
-  # Get all rows including title rows (division headers)
-  all_rows <- tbl |> html_elements("tr")
-
-  for (row in all_rows) {
-    # Check if this is a division title row
-    title_td <- row |> html_element("td[colspan]")
-    if (!is.na(title_td)) {
-      div_text <- html_text(title_td, trim = TRUE)
-      if (grepl("Division$", div_text)) {
-        current_division <- div_text
-      }
+    # Detect division header: a line like "North Division" (no commas in the data portion)
+    # Division headers contain "Division" and have no commas before it
+    if (grepl("Division$", trimmed) && !grepl(",", trimmed)) {
+      current_division <- trimmed
       next
     }
 
-    # Check if this is a label row (headers)
-    row_class <- html_attr(row, "class")
-    if (!is.na(row_class) && grepl("label", row_class)) {
-      next
-    }
+    # Skip column header rows
+    if (grepl("^Team,", trimmed)) next
 
-    # Parse data rows
-    cells <- row |> html_elements("td")
-    if (length(cells) < 8) next
+    # Skip if no division context yet
+    if (is.na(current_division)) next
 
-    team_link <- cells[[1]] |> html_element("a")
-    team_name <- if (!is.na(team_link)) html_text(team_link, trim = TRUE) else html_text(cells[[1]], trim = TRUE)
+    # Parse team row
+    parsed <- tryCatch({
+      con <- textConnection(line)
+      result <- read.csv(con, header = FALSE, stringsAsFactors = FALSE, quote = '"')
+      close(con)
+      result
+    }, error = function(e) NULL)
 
+    if (is.null(parsed) || ncol(parsed) < 11) next
+
+    team_name <- trimws(as.character(parsed$V1[1]))
     if (nchar(team_name) == 0) next
 
-    # Extract numeric values from cells
-    cell_vals <- sapply(cells, function(c) html_text(c, trim = TRUE))
+    wins   <- as.integer(parsed$V2[1])
+    losses <- as.integer(parsed$V3[1])
+    ties   <- as.integer(parsed$V4[1])
+    pct    <- as.numeric(parsed$V5[1])
+
+    gb_raw <- trimws(as.character(parsed$V6[1]))
+    games_back <- if (gb_raw == "-" || gb_raw == "0") 0 else suppressWarnings(as.numeric(gb_raw))
+
+    streak     <- trimws(as.character(parsed$V7[1]))
+    div_record <- trimws(as.character(parsed$V8[1]))
+
+    # Wks (magic number / weeks) column
+    wks_raw <- trimws(as.character(parsed$V9[1]))
+    magic_number <- wks_raw
+
+    total_points       <- suppressWarnings(as.numeric(parsed$V10[1]))
+    points_behind_raw  <- trimws(as.character(parsed$V11[1]))
+    points_behind_leader <- suppressWarnings(as.numeric(points_behind_raw))
+
+    points_against <- suppressWarnings(as.numeric(parsed$V12[1]))
 
     all_standings[[length(all_standings) + 1]] <- data.frame(
       division = current_division,
       team_name = team_name,
-      wins = as.integer(cell_vals[2]),
-      losses = as.integer(cell_vals[3]),
-      ties = as.integer(cell_vals[4]),
-      pct = as.numeric(cell_vals[5]),
-      games_back = as.numeric(cell_vals[6]),
-      streak = cell_vals[7],
-      div_record = cell_vals[8],
-      magic_number = if (length(cell_vals) >= 9) cell_vals[9] else NA_character_,
-      total_points = if (length(cell_vals) >= 10) as.numeric(cell_vals[10]) else NA_real_,
-      points_behind_leader = if (length(cell_vals) >= 11) as.numeric(cell_vals[11]) else NA_real_,
-      points_against = if (length(cell_vals) >= 12) as.numeric(cell_vals[12]) else NA_real_,
+      wins = wins,
+      losses = losses,
+      ties = ties,
+      pct = pct,
+      games_back = games_back,
+      streak = streak,
+      div_record = div_record,
+      magic_number = magic_number,
+      total_points = total_points,
+      points_behind_leader = points_behind_leader,
+      points_against = points_against,
       stringsAsFactors = FALSE
     )
   }
+
+  if (length(all_standings) == 0) {
+    stop("No team rows parsed from CSV. Check file format.")
+  }
+
+  standings_df <- do.call(rbind, all_standings)
+
+  # Derived fields
+  standings_df$games_played <- standings_df$wins + standings_df$losses + standings_df$ties
+  standings_df$ppg <- round(standings_df$total_points / standings_df$games_played, 1)
+
+  # Sort by pct descending, then total points
+
+  standings_df <- standings_df[order(-standings_df$pct, -standings_df$total_points), ]
+  rownames(standings_df) <- NULL
+
+  standings_df
 }
 
-standings_df <- bind_rows(all_standings)
+# --- Main execution ---
+args <- commandArgs(trailingOnly = TRUE)
+csv_path <- tryCatch(
+  find_csv_file(if (length(args) > 0) args[1] else NULL),
+  error = function(e) {
+    log_error(e$message)
+    cached <- load_cached_standings()
+    if (!is.null(cached)) return(NULL)
+    stop(e$message)
+  }
+)
 
-# --- Derived fields ---
-standings_df <- standings_df |>
-  mutate(
-    games_played = wins + losses + ties,
-    ppg = round(total_points / games_played, 1)
-  ) |>
-  arrange(desc(pct), desc(total_points))
+if (is.null(csv_path)) {
+  # Using cached data (find_csv_file failed but cache was loaded)
+  q(save = "no", status = 0)
+}
+
+standings_df <- parse_standings_csv(csv_path)
 
 # --- Validation ---
-if (!validate_standings(standings_df)) {
-  log_error("Validation failed for parsed standings data. Attempting cache fallback...")
-  cached <- load_cached_standings()
-  if (!is.null(cached) && validate_standings(cached)) {
-    standings_df <- cached
-    log_info("Using previously cached valid standings data")
-  } else {
-    stop("No valid standings data available (parse failed validation and no valid cache)")
-  }
-}
-
 n_teams <- nrow(standings_df)
-n_divisions <- length(unique(na.omit(standings_df$division)))
+n_divisions <- length(unique(standings_df$division))
 
-# Additional team count warning with specific details
 if (n_teams != EXPECTED_TEAMS) {
-  log_warn(sprintf(
-    "Teams found (%d): %s",
-    n_teams, paste(standings_df$team_name, collapse = ", ")
-  ))
-  log_warn(sprintf("Re-save HTML from: %s", CBS_STANDINGS_URL))
+  log_warn(sprintf("Expected %d teams but found %d: %s",
+    EXPECTED_TEAMS, n_teams, paste(standings_df$team_name, collapse = ", ")))
 }
-
-# Additional division warning
 if (n_divisions != EXPECTED_DIVISIONS) {
-  log_warn(sprintf(
-    "Divisions found (%d): %s",
-    n_divisions, paste(unique(na.omit(standings_df$division)), collapse = ", ")
-  ))
+  log_warn(sprintf("Expected %d divisions but found %d: %s",
+    EXPECTED_DIVISIONS, n_divisions, paste(unique(standings_df$division), collapse = ", ")))
 }
 
-# --- Add metadata attributes (Requirement 1.5) ---
-attr(standings_df, "source_file") <- normalizePath(import_file, mustWork = FALSE)
+# --- Add metadata ---
+attr(standings_df, "source_file") <- normalizePath(csv_path, mustWork = FALSE)
 attr(standings_df, "parsed_at") <- Sys.time()
 attr(standings_df, "league_id") <- LEAGUE_ID
 attr(standings_df, "team_count") <- n_teams
@@ -300,18 +210,14 @@ dir.create(dirname(output_file), showWarnings = FALSE, recursive = TRUE)
 saveRDS(standings_df, output_file)
 
 # --- Report ---
-log_info("Standings parsed successfully!")
+log_info("Standings parsed successfully from CSV!")
+log_info(sprintf("  Source: %s", basename(csv_path)))
 log_info(sprintf("  Teams: %d", n_teams))
 log_info(sprintf("  Divisions: %d", n_divisions))
 log_info("  Overall rankings:")
-ranked <- standings_df |> arrange(desc(pct), desc(total_points))
-for (i in seq_len(nrow(ranked))) {
-  r <- ranked[i, ]
-  log_info(sprintf("    %2d. %-30s %d-%d  (%.0f pts, %.1f ppg) [%s]",
+for (i in seq_len(nrow(standings_df))) {
+  r <- standings_df[i, ]
+  log_info(sprintf("    %2d. %-30s %d-%d  (%.1f pts, %.1f ppg) [%s]",
     i, r$team_name, r$wins, r$losses, r$total_points, r$ppg, r$division))
 }
 log_info(sprintf("  Saved to: %s", output_file))
-log_info(sprintf("  Metadata: source_file=%s, parsed_at=%s, league_id=%s",
-  attr(standings_df, "source_file"),
-  format(attr(standings_df, "parsed_at"), "%Y-%m-%d %H:%M:%S"),
-  attr(standings_df, "league_id")))

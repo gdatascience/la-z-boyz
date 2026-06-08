@@ -9,7 +9,7 @@
 
 - `here` — reliable path resolution in tests and scripts
 - `testthat` — test framework (v3 edition with snapshot support)
-- `rvest` / `xml2` — HTML parsing for CBS page imports
+- `rvest` / `xml2` — HTML parsing for CBS page imports (constitution only)
 - `httr` / `jsonlite` — API calls to CBS endpoints
 - Base R data frames (no tidyverse dependency in core modules)
 
@@ -17,7 +17,7 @@
 
 - Intermediate/cached data: `.rds` files in `data/cache/`
 - Metadata attached via R attributes (`source_file`, `parsed_at`, `league_id`)
-- Imports: saved HTML pages from CBS dropped into `data/imports/`
+- Imports: CSV exports from CBS dropped into `data/imports/` (rosters, standings); HTML only for constitution
 - Reports: R Markdown (`.Rmd`) rendered to HTML
 
 ## Testing
@@ -63,4 +63,10 @@ Rscript R/ingest/fetch_players.R
 
 # Refresh league rules from CBS (no auth needed)
 Rscript R/ingest/fetch_rules.R
+
+# Parse standings from CSV export (drop overall.csv in data/imports/ first)
+Rscript R/ingest/parse_standings.R
+
+# Parse rosters from CSV export (auto-detects latest file in data/imports/)
+Rscript R/ingest/parse_rosters.R
 ```
